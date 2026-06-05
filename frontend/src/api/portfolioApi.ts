@@ -7,7 +7,7 @@ interface CommonResponse<T = null> {
 }
 
 export interface PortfolioItem {
-  assetType: string;
+  assetType?: string;
   assetAmount: number;
   assetId?: string;
 }

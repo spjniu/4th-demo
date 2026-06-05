@@ -1,5 +1,5 @@
 import type { DashboardData } from './dashboardApi';
-import { getPortfolios, updatePortfolios, type PortfolioItem } from './portfolioApi';
+import { updatePortfolios } from './portfolioApi';
 
 const AI_BASE = 'http://localhost:8000';
 
@@ -26,22 +26,11 @@ export interface ProposeResponse {
   portfolio: ResetPortfolioItem[];
 }
 
-// AI 자산 유형 → 백엔드 enum 매핑
-const ASSET_TYPE_MAP: Record<string, string> = {
-  'ETF':    'STOCK',  '주식':   'STOCK',  '투자':   'STOCK',
-  '해외주식': 'STOCK', '국내주식': 'STOCK',
-  '채권':   'BOND',
-  '적금':   'FIXED',  '예금':   'FIXED',  '저축':   'FIXED',
-  '현금성': 'CASH',   '파킹':   'CASH',   'CMA':    'CASH',
-  'IRP':    'IRP',    '연금저축': 'IRP',   '연금':   'IRP',
-  '비상금': 'EMERGENCY',
-};
+// 투자성 항목 키워드 (비투자 항목은 제외)
+const INVEST_KEYWORDS = ['ETF', '주식', '투자', '채권', '적금', '예금', '저축', '현금성', '파킹', 'CMA', 'IRP', '연금', '비상금'];
 
-function toBackendAssetType(label: string): string | null {
-  for (const [key, type] of Object.entries(ASSET_TYPE_MAP)) {
-    if (label.includes(key)) return type;
-  }
-  return null; // 생활비·식비 등 비투자 항목
+function isInvestItem(label: string): boolean {
+  return INVEST_KEYWORDS.some(kw => label.includes(kw));
 }
 
 export async function applyReset(
@@ -49,50 +38,30 @@ export async function applyReset(
   action: 'salary' | 'portfolio',
   dashboard: DashboardData,
 ): Promise<void> {
-  const investAmount = dashboard.salaryPlan.investmentAmount ?? 0;
-
-  // 기존 portfolios 가져오기 (assetId 재사용)
-  const { portfolios: existing } = await getPortfolios();
-  if (!existing || existing.length === 0) throw new Error('기존 포트폴리오 정보가 없어요');
+  const currentInvestAmount = dashboard.salaryPlan.investmentAmount ?? 0;
+  const monthlyIncome = dashboard.salaryPlan.monthlyIncome ?? 0;
 
   let monthlyInvestAmount: number;
 
   if (action === 'portfolio') {
-    // AI 비율 → 각 portfolio 항목에 비례 배분
-    monthlyInvestAmount = investAmount > 0 ? investAmount : Math.round(
-      (dashboard.salaryPlan.monthlyIncome ?? 0) * 0.2
-    );
-    const total = proposal.portfolio.reduce((s, p) => s + p.ratio, 0) || 100;
-    const portfolios: PortfolioItem[] = existing
-      .filter(e => e.assetId)
-      .map((e, i) => {
-        const matched = proposal.portfolio[i];
-        const ratio = matched ? matched.ratio / total : 1 / existing.length;
-        return { assetType: e.assetType, assetAmount: Math.round(monthlyInvestAmount * ratio), assetId: e.assetId };
-      });
-    await updatePortfolios(portfolios, monthlyInvestAmount);
+    // 포트폴리오 변경: 현재 투자 금액 유지 (비율만 AI 제안으로 변경)
+    monthlyInvestAmount = currentInvestAmount > 0
+      ? currentInvestAmount
+      : Math.round(monthlyIncome * 0.2);
   } else {
-    // salary: 투자성 항목 합계를 monthlyInvestAmount로, 기존 비율로 배분
-    const investItems = proposal.salary_allocations
-      .map(a => ({ type: toBackendAssetType(a.purpose), amount: a.plannedAmount }))
-      .filter((x): x is { type: string; amount: number } => x.type !== null && x.amount > 0);
+    // 월급 배분 변경: AI 제안의 투자성 항목 합계를 새 투자 금액으로
+    const investItems = proposal.salary_allocations.filter(a => isInvestItem(a.purpose));
+    monthlyInvestAmount = investItems.reduce((s, a) => s + a.plannedAmount, 0);
 
-    monthlyInvestAmount = investItems.reduce((s, x) => s + x.amount, 0);
-    if (monthlyInvestAmount <= 0) throw new Error('적용할 투자 항목이 없어요');
-
-    // 기존 비율 유지하며 새 금액으로 재배분
-    const totalExisting = existing.reduce((s, e) => s + (e.assetAmount ?? 0), 0);
-    const portfolios: PortfolioItem[] = existing
-      .filter(e => e.assetId)
-      .map(e => ({
-        assetType: e.assetType,
-        assetAmount: totalExisting > 0
-          ? Math.round(monthlyInvestAmount * (e.assetAmount ?? 0) / totalExisting)
-          : Math.round(monthlyInvestAmount / existing.length),
-        assetId: e.assetId,
-      }));
-    await updatePortfolios(portfolios, monthlyInvestAmount);
+    // 투자성 항목이 없으면 전체의 20%를 투자 금액으로 설정
+    if (monthlyInvestAmount <= 0) {
+      monthlyInvestAmount = Math.round(monthlyIncome * 0.2);
+    }
   }
+
+  // 기존 포트폴리오 비율 유지하며 새 투자 금액만 업데이트
+  // (백엔드에서 portfolios 미전달 시 자동으로 기존 비율로 재계산)
+  await updatePortfolios([], monthlyInvestAmount);
 }
 
 export async function analyzeGoal(goal: string, dashboard: DashboardData): Promise<AnalyzeResponse> {

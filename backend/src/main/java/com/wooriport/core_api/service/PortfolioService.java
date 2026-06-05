@@ -100,25 +100,37 @@ public class PortfolioService {
 
         Long oldMonthlyInvestAmount = user.getMonthlyInvestAmount();
 
-        // 기존 포트폴리오 전체 삭제 후 재생성
-        portfolioRepository.deleteByUserId(userId);
+        List<Portfolios> saved;
+        if (request.getPortfolios() != null && !request.getPortfolios().isEmpty()) {
+            // 포트폴리오 목록이 전달된 경우: 기존 삭제 후 재생성
+            portfolioRepository.deleteByUserId(userId);
 
-        List<Portfolios> saved = request.getPortfolios().stream()
-                .map(item -> {
-                    com.wooriport.core_api.domain.Assets asset = assetRepository.findById(item.getAssetId())
-                            .orElseThrow(() -> new IllegalArgumentException("계좌를 찾을 수 없습니다: " + item.getAssetId()));
-                    if (item.getAccountPurpose() != null) {
-                        asset.updateAccountPurpose(item.getAccountPurpose());
-                    }
-                    return Portfolios.builder()
-                            .user(user)
-                            .assetAmount(item.getAssetAmount())
-                            .asset(asset)
-                            .build();
-                })
-                .collect(Collectors.toList());
+            saved = request.getPortfolios().stream()
+                    .map(item -> {
+                        com.wooriport.core_api.domain.Assets asset = assetRepository.findById(item.getAssetId())
+                                .orElseThrow(() -> new IllegalArgumentException("계좌를 찾을 수 없습니다: " + item.getAssetId()));
+                        if (item.getAccountPurpose() != null) {
+                            asset.updateAccountPurpose(item.getAccountPurpose());
+                        }
+                        return Portfolios.builder()
+                                .user(user)
+                                .assetAmount(item.getAssetAmount())
+                                .asset(asset)
+                                .build();
+                    })
+                    .collect(Collectors.toList());
 
-        portfolioRepository.saveAll(saved);
+            portfolioRepository.saveAll(saved);
+        } else {
+            // 포트폴리오 미전달: 기존 비율 유지하며 금액만 재계산
+            saved = portfolioRepository.findByUserId(userId);
+            if (oldMonthlyInvestAmount != null && oldMonthlyInvestAmount > 0 && !saved.isEmpty()) {
+                for (Portfolios p : saved) {
+                    long newAmount = p.getAssetAmount() * request.getMonthlyInvestAmount() / oldMonthlyInvestAmount;
+                    p.updateAmount(newAmount);
+                }
+            }
+        }
 
         // portfolioFlow.amount를 현재 monthlyInvestAmount 대비 비율로 재계산
         if (oldMonthlyInvestAmount != null && oldMonthlyInvestAmount > 0) {
@@ -151,6 +163,7 @@ public class PortfolioService {
         List<PortfolioListResponseDto.PortfolioItem> items = portfolios.stream()
                 .map(p -> PortfolioListResponseDto.PortfolioItem.builder()
                         .id(p.getId())
+                        .assetId(p.isLinked() ? p.getAsset().getId() : null)
                         .assetAmount(p.getAssetAmount())
                         .isLinked(p.isLinked())
                         .institution(p.isLinked() ? p.getAsset().getInstitution() : null)
