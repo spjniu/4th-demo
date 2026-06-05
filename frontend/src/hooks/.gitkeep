@@ -1,0 +1,11 @@
+# Custom React 훅을 모아두는 폴더
+#
+# 예시:
+#   - useGoals.ts        목표 관련 로직
+#   - useAccounts.ts     계좌 관련 로직
+#   - useDebounce.ts     디바운스
+#
+# 작성 규칙:
+#   - 파일명은 use로 시작 (예: useFoo.ts)
+#   - 1훅 = 1파일
+#   - 도메인 로직(API 호출 등)은 훅으로 캡슐화하면 페이지가 가벼워짐

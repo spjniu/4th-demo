@@ -1,0 +1,82 @@
+@font-face {
+  font-family: 'Wooridaum';
+  src: url('/fonts/WooridaumL.otf') format('opentype');
+  font-weight: 300;
+}
+
+@font-face {
+  font-family: 'Wooridaum';
+  src: url('/fonts/WooridaumR.otf') format('opentype');
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'Wooridaum';
+  src: url('/fonts/WooridaumB.otf') format('opentype');
+  font-weight: 700;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fillBar {
+  from { width: 0; }
+}
+
+.animate-fill-bar {
+  animation: fillBar 1.5s ease-out forwards;
+}
+
+.speech-bubble::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 20px;
+  border-width: 0 10px 10px 10px;
+  border-style: solid;
+  border-color: transparent transparent #eff6ff transparent;
+}
+
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  opacity: 0;
+  animation: slideUpFade 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes floating {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-floating {
+  display: inline-block;
+  animation: floating 2.5s ease-in-out infinite;
+}
+
+@keyframes bounceSubtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.animate-bounce-subtle {
+  display: inline-block;
+  animation: bounceSubtle 2s ease-in-out infinite;
+}
+
+@keyframes pageFadeOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.page-exit {
+  animation: pageFadeOut 0.5s ease-out forwards;
+}
+
+@keyframes pulseDot {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+  40%           { transform: scale(1); opacity: 1; }
+}
+.animate-pulse-dot {
+  animation: pulseDot 1.5s infinite ease-in-out both;
+}
