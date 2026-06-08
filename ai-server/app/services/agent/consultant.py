@@ -20,10 +20,14 @@ logger = logging.getLogger(__name__)
 _ANALYZE_SYSTEM = (
     "당신은 개인 재무 관리 AI Pori입니다.\n"
     "사용자 목표를 분석해 월급 배분 재설정(salary)과 투자 포트폴리오 재설정(portfolio) 중 더 적합한 것을 추천합니다.\n\n"
-    '반드시 아래 JSON 형식으로만 응답하세요:\n{"action": "salary" 또는 "portfolio", "reasoning": "추천 이유 1문장"}\n\n'
+    '반드시 아래 JSON 형식으로만 응답하세요:\n{"action": "salary" 또는 "portfolio", "reasoning": "추천 이유"}\n\n'
+    "reasoning 작성 규칙:\n"
+    "- 월 소득, 저축률, 여유자금, 지출액 등 제공된 실제 수치를 반드시 언급하세요\n"
+    "- 선택한 옵션이 왜 더 적합한지, 선택하지 않은 옵션이 왜 덜 적합한지 모두 설명하세요\n"
+    "- 2~3문장으로 구체적으로 작성하세요\n\n"
     "기준:\n"
-    "- salary: 저축 목표 달성, 지출 구조 조정, 특정 목적 자금 마련에 효과적\n"
-    "- portfolio: 투자 수익 개선, 리스크 조정, 자산 배분 최적화에 효과적"
+    "- salary: 저축률이 낮거나 지출 구조 조정이 우선일 때, 특정 목적 자금 마련이 시급할 때\n"
+    "- portfolio: 저축률이 충분하지만 투자 수익이 목표 달성에 필요할 때, 자산 배분 불균형이 명확할 때"
 )
 
 _SALARY_SYSTEM = (
@@ -34,7 +38,7 @@ _SALARY_SYSTEM = (
     '"salary_allocations":[{"purpose":"생활비","plannedAmount":1500000,"ratio":50}],"portfolio":[]}\n\n'
     "규칙:\n"
     "- 모든 ratio 합계 = 100\n"
-    "- plannedAmount = 월 소득 × (ratio / 100), 원 단위 반올림\n"
+    "- plannedAmount = 월 소득 x (ratio / 100), 원 단위 반올림\n"
     "- 생활비·저축·투자·목표 적금 등 현실적 항목으로 구성 (3~5개)"
 )
 
@@ -55,10 +59,12 @@ def _fmt_dashboard(snap: dict[str, Any]) -> str:
     income = snap.get("salaryPlan", {}).get("monthlyIncome", 0)
     allocs = snap.get("salaryPlan", {}).get("allocations", [])
     portfolio = snap.get("portfolio", [])
-    consumption = snap.get("consumption", {})
+    total_expense = snap.get("totalExpense", 0)
+    free_cash = income - total_expense if income > 0 else 0
+    savings_rate = round(free_cash / income * 100, 1) if income > 0 else 0.0
 
     alloc_lines = "\n".join(
-        f"  - {a.get('purpose','기타')}: {a.get('plannedAmount',0):,}원"
+        f"  - {a.get('purpose','기타')}: {a.get('plannedAmount',0):,}원 ({a.get('ratio',0)}%)"
         for a in allocs
     ) or "  (없음)"
 
@@ -69,9 +75,11 @@ def _fmt_dashboard(snap: dict[str, Any]) -> str:
 
     return (
         f"월 소득: {income:,}원\n"
+        f"이번 달 총 지출: {total_expense:,}원\n"
+        f"월 여유자금: {free_cash:,}원\n"
+        f"저축률: {savings_rate}%\n"
         f"현재 월급 배분:\n{alloc_lines}\n"
-        f"현재 포트폴리오:\n{portfolio_lines}\n"
-        f"이번 달 총 지출: {consumption.get('totalExpense', 0):,}원"
+        f"현재 포트폴리오:\n{portfolio_lines}"
     )
 
 
@@ -88,7 +96,6 @@ async def analyze_goal(req: ResetAnalyzeRequest) -> ResetAnalyzeResponse:
     result = await ainvoke_structured(
         [SystemMessage(content=_ANALYZE_SYSTEM), HumanMessage(content=context)],
         _AnalyzeAI,
-        temperature=0.3,
         max_tokens=256,
     )
     if result is None:
@@ -107,7 +114,6 @@ async def propose_reset(req: ResetProposeRequest) -> ResetProposeResponse:
     result = await ainvoke_structured(
         [SystemMessage(content=system), HumanMessage(content=context)],
         _ProposeAI,
-        temperature=0.5,
         max_tokens=512,
     )
     if result is None:

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -71,11 +72,11 @@ class ProductItem(BaseModel):
 class AssetPortfolioRequest(BaseModel):
     user_id: UUID
     invest_amount: int
-    interest: str | None = None
-    invest_interests: list[str] = []
-    porti_type: str | None = None
-    porti_comment: str = ""
-    invest_assets: list[AssetItem] = []
+    interest: str
+    invest_interests: list[str]
+    porti_type: str
+    porti_comment: str
+    invest_assets: list[AssetItem]
 
 
 class GatheringAccount(BaseModel):
@@ -89,6 +90,7 @@ class PortfolioItem(BaseModel):
     type: str
     name: str
     ratio: int
+    ticker: str
     interest_rate: float
     comment: str
 
@@ -97,8 +99,8 @@ class InvestmentPlan(BaseModel):
     title: str
     term: str
     summary: str
-    gathering_id: UUID
-    gathering_account: GatheringAccount
+    gathering_id: Optional[UUID] = None
+    gathering_account: Optional[GatheringAccount] = None
     amount: int
     account_comment: str
     portfolio: list[PortfolioItem]
