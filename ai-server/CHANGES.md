@@ -98,3 +98,31 @@
 | LLM Base URL | `OPENROUTER_BASE_URL` 환경변수 또는 config 상수 | 제거 (OpenAI 기본 URL 사용) |
 | 임베딩 모델 | `nvidia/llama-nemotron-embed-vl-1b-v2:free` (2048차원) | `text-embedding-3-small` (1536차원) |
 | 세션 스토어 | 없음 | `REDIS_URL` (redis://localhost:6379) |
+
+---
+
+## 추가 업데이트
+
+### 컨설턴트 툴 호출 추가 (`consultant_tools.py` 신규)
+
+`propose_reset` 호출 시 LLM이 실시간 데이터 툴을 자율 호출하도록 변경.
+
+| 툴 | 설명 | 활용 시점 |
+|----|------|---------|
+| `get_current_rates()` | 우리은행 예금·적금 최고금리 조회 (products DB) | salary 재설정 시 |
+| `get_market_snapshot()` | 주요 ETF·주식 현재 주가 조회 (yfinance) | portfolio 재설정 시 |
+
+- `consultant.py`에 `_invoke_with_tools()` 헬퍼 추가 (mini_challenge 패턴 동일)
+- `_SALARY_SYSTEM` / `_PORTFOLIO_SYSTEM` 프롬프트에 툴 호출 의무화 및 실제 데이터 언급 규칙 추가
+
+### PorTI 투자 성향 반영
+
+백엔드 `buildSnapshot()`이 `portiType`·`portiComment` 필드를 추가로 전달.
+AI 서버에서 이를 프롬프트에 반영해 성향별 맞춤 제안 생성.
+
+| 항목 | 내용 |
+|------|------|
+| `_fmt_dashboard()` | `portiType` 있으면 `"투자 성향: CYCLING (투자형_장기형 ...)"` 형태로 컨텍스트 상단 출력 |
+| `_ANALYZE_SYSTEM` | 성향 기반 action 판단 기준 추가 (안전형 → salary, 투자형 → portfolio) |
+| `_SALARY_SYSTEM` | 성향별 저축·투자 비중 가이드라인 추가 |
+| `_PORTFOLIO_SYSTEM` | 성향별 ETF·현금성 비중 가이드라인 추가 |

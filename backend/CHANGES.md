@@ -143,3 +143,23 @@ AI 컨설턴트 기능을 프론트엔드가 AI 서버를 직접 호출하던 �
 | Base URL | `http://localhost:8000/portfolio` | `http://localhost:8000` |
 | `/consultant/propose` 요청 파라미터 경로 | `dashboard_snapshot.consumption.totalExpense` | `dashboard_snapshot.totalExpense` |
 | `/consultant/analyze` 요청 바디 구조 | `consumption: { totalExpense }` 중첩 | `totalExpense` 최상위 필드로 이동 |
+
+---
+
+## 추가 업데이트
+
+### PorTI 투자 성향 스냅샷 반영
+
+`ConsultantService.buildSnapshot()`에 사용자 투자 성향 필드 추가.
+AI 서버가 제안 생성 시 PorTI 타입을 참고해 성향에 맞는 배분을 제안.
+
+| 추가 필드 | 타입 | 설명 |
+|----------|------|------|
+| `portiType` | `String` | 사용자 PorTI 유형 코드 (예: `"CYCLING"`) |
+| `portiComment` | `String` | PorTI 유형 설명 (예: `"높은 수익을 향해 장기적으로 달려가는 투자 지향형이에요."`) |
+
+### 버그 수정
+
+| 파일 | 내용 |
+|------|------|
+| `ConsultantService.java` | lambda 내 `newInvestAmount` effectively final 오류 수정 → `portfolioInvestAmount`로 캡처 |
