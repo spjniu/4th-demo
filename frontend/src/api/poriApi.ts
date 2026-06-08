@@ -38,6 +38,42 @@ interface CommonResponse<T = null> {
   data: T;
 }
 
+export interface AnalysisResult {
+  action: 'salary' | 'portfolio';
+  reasoning: string;
+}
+
+export async function fetchAnalysis(userMessage: string): Promise<AnalysisResult> {
+  const { action, reasoning } = await analyzeGoal(userMessage);
+  return { action, reasoning };
+}
+
+export async function fetchProposalWithAction(
+  userMessage: string,
+  action: 'salary' | 'portfolio',
+  dashboard: DashboardData,
+): Promise<Proposal> {
+  const investAmount = dashboard.salaryPlan.investmentAmount ?? Math.round((dashboard.salaryPlan.monthlyIncome ?? 0) * 0.2);
+  const result = await proposeReset(userMessage, action);
+
+  const salaryAllocations: ProposalAllocation[] = result.salaryAllocations.map(a => ({
+    purpose: a.purpose,
+    plannedAmount: a.plannedAmount,
+  }));
+
+  const portfolio: ProposalPortfolioItem[] = result.portfolio.map(p => ({
+    assetType: p.assetType,
+    assetAmount: Math.round(investAmount * p.ratio / 100),
+    ratio: p.ratio,
+  }));
+
+  return {
+    summary: result.summary,
+    explanation: result.explanation,
+    changes: { events: [], salaryAllocations, portfolio },
+  };
+}
+
 export async function fetchProposal(userMessage: string, dashboard: DashboardData): Promise<Proposal> {
   const investAmount = dashboard.salaryPlan.investmentAmount ?? Math.round((dashboard.salaryPlan.monthlyIncome ?? 0) * 0.2);
 

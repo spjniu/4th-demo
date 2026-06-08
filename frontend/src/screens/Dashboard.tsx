@@ -6,7 +6,7 @@ import { getDashboard, type DashboardData } from '../api/dashboardApi';
 import SalaryManagement from './SalaryManagement';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notificationApi';
 import { getAssets, deleteAsset, type Asset } from '../api/assetApi';
-import { fetchProposal, applyProposal, type Proposal } from '../api/poriApi';
+import { fetchAnalysis, fetchProposalWithAction, applyProposal, type Proposal, type AnalysisResult } from '../api/poriApi';
 import { getChallengeAlarmDetail, type ChallengeAlarmDetail } from '../api/challengeApi';
 import ChallengeAlarmModal from '../components/ChallengeAlarmModal';
 import portiImg from '../assets/porti.png';
@@ -540,10 +540,12 @@ export default function Dashboard() {
   }, []);
 
   // ── Pori ─────────────────────────────────────────────────
-  type PoriStep = 'input' | 'loading' | 'preview' | 'applying' | 'done';
+  type PoriStep = 'input' | 'loading' | 'analyze' | 'proposing' | 'preview' | 'applying' | 'done';
   const [poriOpen, setPoriOpen] = useState(false);
   const [poriStep, setPoriStep] = useState<PoriStep>('input');
   const [poriMessage, setPoriMessage] = useState('');
+  const [poriAnalysis, setPoriAnalysis] = useState<AnalysisResult | null>(null);
+  const [poriAction, setPoriAction] = useState<'salary' | 'portfolio' | null>(null);
   const [poriProposal, setPoriProposal] = useState<Proposal | null>(null);
   const [poriError, setPoriError] = useState<string | null>(null);
   const poriInputRef = useRef<HTMLTextAreaElement>(null);
@@ -990,7 +992,7 @@ export default function Dashboard() {
           pointerEvents: 'none', zIndex: 400,
         }}>
           <button
-            onClick={() => { setPoriOpen(true); setPoriStep('input'); setPoriMessage(''); setPoriProposal(null); setPoriError(null); }}
+            onClick={() => { setPoriOpen(true); setPoriStep('input'); setPoriMessage(''); setPoriAnalysis(null); setPoriAction(null); setPoriProposal(null); setPoriError(null); }}
             style={{
               position: 'absolute', bottom: 28, right: 20,
               pointerEvents: 'auto',
@@ -1076,9 +1078,10 @@ export default function Dashboard() {
                     setPoriStep('loading');
                     setPoriError(null);
                     try {
-                      const proposal = await fetchProposal(poriMessage, dashboard);
-                      setPoriProposal(proposal);
-                      setPoriStep('preview');
+                      const analysis = await fetchAnalysis(poriMessage);
+                      setPoriAnalysis(analysis);
+                      setPoriAction(analysis.action);
+                      setPoriStep('analyze');
                     } catch (e) {
                       setPoriError(e instanceof Error ? e.message : 'AI 서버 오류');
                       setPoriStep('input');
@@ -1096,11 +1099,15 @@ export default function Dashboard() {
             )}
 
             {/* ── step: loading ── */}
-            {poriStep === 'loading' && (
+            {(poriStep === 'loading' || poriStep === 'proposing') && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
                 <div style={{ fontSize: 40, marginBottom: 16 }}>🐥</div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>분석 중이에요...</p>
-                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>현재 재무 상태를 보고 최적 플랜을 찾고 있어요</p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
+                  {poriStep === 'loading' ? '목표를 분석 중이에요...' : '플랜을 만들고 있어요...'}
+                </p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>
+                  {poriStep === 'loading' ? '현재 재무 상태를 보고 방향을 정하고 있어요' : '실제 금리와 시세를 확인해 최적 제안을 생성 중이에요'}
+                </p>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
                   {[0, 1, 2].map(i => (
                     <div key={i} style={{
@@ -1111,6 +1118,73 @@ export default function Dashboard() {
                 </div>
                 <style>{`@keyframes bounce { 0%,80%,100%{transform:scale(0.6);opacity:0.4} 40%{transform:scale(1);opacity:1} }`}</style>
               </div>
+            )}
+
+            {/* ── step: analyze ── */}
+            {poriStep === 'analyze' && poriAnalysis && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 22 }}>🐥</span>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>Pori의 추천</p>
+                </div>
+                <p style={{ fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.7 }}>
+                  {poriAnalysis.reasoning}
+                </p>
+
+                <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>어떤 방식으로 재설정할까요?</p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                  {(['salary', 'portfolio'] as const).map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => setPoriAction(opt)}
+                      style={{
+                        flex: 1, padding: '12px 0', borderRadius: 12, border: '2px solid',
+                        borderColor: poriAction === opt ? '#1D9E75' : '#e2e8f0',
+                        background: poriAction === opt ? '#E1F5EE' : '#fff',
+                        fontSize: 13, fontWeight: 700,
+                        color: poriAction === opt ? '#085041' : '#64748b',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}
+                    >
+                      {opt === 'salary' ? '💸 월급 배분' : '📊 포트폴리오'}
+                      {poriAnalysis.action === opt && (
+                        <span style={{ display: 'block', fontSize: 10, fontWeight: 500, marginTop: 2, color: '#1D9E75' }}>Pori 추천</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+
+                {poriError && <p style={{ fontSize: 11, color: '#A32D2D', marginBottom: 8 }}>{poriError}</p>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => { setPoriStep('input'); setPoriAnalysis(null); setPoriAction(null); setPoriError(null); }}
+                    style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', fontSize: 14, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}
+                  >다시 입력</button>
+                  <button
+                    disabled={!poriAction}
+                    onClick={async () => {
+                      if (!dashboard || !poriAction) return;
+                      setPoriStep('proposing');
+                      setPoriError(null);
+                      try {
+                        const proposal = await fetchProposalWithAction(poriMessage, poriAction, dashboard);
+                        setPoriProposal(proposal);
+                        setPoriStep('preview');
+                      } catch (e) {
+                        setPoriError(e instanceof Error ? e.message : 'AI 서버 오류');
+                        setPoriStep('analyze');
+                      }
+                    }}
+                    style={{
+                      flex: 2, padding: '12px 0', borderRadius: 12, border: 'none',
+                      background: poriAction ? 'linear-gradient(135deg, #1D9E75, #085041)' : '#e2e8f0',
+                      fontSize: 14, fontWeight: 700,
+                      color: poriAction ? '#fff' : '#94a3b8',
+                      cursor: poriAction ? 'pointer' : 'default',
+                    }}
+                  >이 방식으로 진행 →</button>
+                </div>
+              </>
             )}
 
             {/* ── step: preview ── */}
