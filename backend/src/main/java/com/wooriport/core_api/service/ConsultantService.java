@@ -114,6 +114,7 @@ public class ConsultantService {
                     ? currentInvestAmount
                     : Math.round(monthlyIncome * 0.2);
 
+            final long portfolioInvestAmount = newInvestAmount;
             portfolioRepository.deleteByUserId(userId);
 
             List<Portfolios> newPortfolios = request.getPortfolio().stream()
@@ -124,7 +125,7 @@ public class ConsultantService {
                             .map(port -> Portfolios.builder()
                                     .user(user)
                                     .asset(port.getAsset())
-                                    .assetAmount(Math.round((double) newInvestAmount * p.getRatio() / 100))
+                                    .assetAmount(Math.round((double) portfolioInvestAmount * p.getRatio() / 100))
                                     .build())
                             .orElse(null))
                     .filter(Objects::nonNull)
