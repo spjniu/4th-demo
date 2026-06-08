@@ -102,9 +102,7 @@ public class PortfolioService {
 
         List<Portfolios> saved;
         if (request.getPortfolios() != null && !request.getPortfolios().isEmpty()) {
-            // 포트폴리오 목록이 전달된 경우: 기존 삭제 후 재생성
             portfolioRepository.deleteByUserId(userId);
-
             saved = request.getPortfolios().stream()
                     .map(item -> {
                         com.wooriport.core_api.domain.Assets asset = assetRepository.findById(item.getAssetId())
@@ -119,10 +117,9 @@ public class PortfolioService {
                                 .build();
                     })
                     .collect(Collectors.toList());
-
             portfolioRepository.saveAll(saved);
         } else {
-            // 포트폴리오 미전달: 기존 비율 유지하며 금액만 재계산
+            // portfolios 미전달 시: 기존 비율 유지하며 금액만 재계산
             saved = portfolioRepository.findByUserId(userId);
             if (oldMonthlyInvestAmount != null && oldMonthlyInvestAmount > 0 && !saved.isEmpty()) {
                 for (Portfolios p : saved) {
@@ -164,6 +161,7 @@ public class PortfolioService {
                 .map(p -> PortfolioListResponseDto.PortfolioItem.builder()
                         .id(p.getId())
                         .assetId(p.isLinked() ? p.getAsset().getId() : null)
+                        .assetType(p.isLinked() ? p.getAsset().getAssetType().name() : null)
                         .assetAmount(p.getAssetAmount())
                         .isLinked(p.isLinked())
                         .institution(p.isLinked() ? p.getAsset().getInstitution() : null)

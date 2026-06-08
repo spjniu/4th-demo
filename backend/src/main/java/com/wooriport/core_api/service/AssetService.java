@@ -1,6 +1,7 @@
 package com.wooriport.core_api.service;
 
 import com.wooriport.core_api.base.dto.asset.*;
+import com.wooriport.core_api.base.exception.AssetDeletionNotAllowedException;
 import com.wooriport.core_api.base.exception.AssetNotFoundException;
 import com.wooriport.core_api.base.exception.UserNotFoundException;
 import com.wooriport.core_api.domain.Assets;
@@ -8,6 +9,9 @@ import com.wooriport.core_api.domain.DummyMydata;
 import com.wooriport.core_api.domain.Users;
 import com.wooriport.core_api.repository.AssetRepository;
 import com.wooriport.core_api.repository.DummyMydataRepository;
+import com.wooriport.core_api.repository.PortfolioFlowItemRepository;
+import com.wooriport.core_api.repository.PortfolioFlowRepository;
+import com.wooriport.core_api.repository.PortfolioRepository;
 import com.wooriport.core_api.repository.TransactionRepository;
 import com.wooriport.core_api.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +35,9 @@ public class AssetService {
     private final UserRepository userRepository;
     private final DummyMydataRepository dummyMydataRepository;
     private final TransactionRepository transactionRepository;
+    private final PortfolioRepository portfolioRepository;
+    private final PortfolioFlowRepository portfolioFlowRepository;
+    private final PortfolioFlowItemRepository portfolioFlowItemRepository;
 
     @Transactional(readOnly = true)
     public MydataPreviewResponseDto previewMydata(UUID userId, List<String> institutions) {
@@ -389,5 +396,26 @@ public class AssetService {
                 .assets(items)
                 .totalCount(items.size())
                 .build();
+    }
+
+    @Transactional
+    public void deleteAsset(UUID userId, UUID assetId) {
+        Assets asset = assetRepository.findById(assetId)
+                .orElseThrow(AssetNotFoundException::new);
+
+        if (!asset.getUser().getId().equals(userId)) {
+            throw new AssetNotFoundException();
+        }
+
+        if (portfolioRepository.existsByAssetId(assetId)) {
+            throw new AssetDeletionNotAllowedException("포트폴리오에 포함된 자산은 삭제할 수 없습니다.");
+        }
+
+        if (portfolioFlowRepository.existsByGatheringAssetId(assetId)
+                || portfolioFlowItemRepository.existsByAssetId(assetId)) {
+            throw new AssetDeletionNotAllowedException("포트폴리오 플로우에 포함된 자산은 삭제할 수 없습니다.");
+        }
+
+        asset.delete();
     }
 }

@@ -18,7 +18,8 @@ public class PortfolioListResponseDto {
     @Builder
     public static class PortfolioItem {
         private UUID id;
-        private UUID assetId;          // assets.id (연동 계좌의 실제 UUID)
+        private UUID assetId;        // assets.id
+        private String assetType;    // assets.asset_type
         private Long assetAmount;
         private Boolean isLinked;
         private String institution;
