@@ -111,3 +111,35 @@ AI 컨설턴트 기능을 프론트엔드가 AI 서버를 직접 호출하던 �
 
 > 세 엔드포인트 모두 JWT 인증 필요.  
 > 백엔드가 DB에서 직접 대시보드 스냅샷을 구성해 AI 서버(`http://localhost:8000`)로 중계.
+
+### 기존 API 변경
+
+| API | 변경 내용 |
+|-----|---------|
+| `PATCH /api/v1/portfolios` | 컨설턴트 제안 적용 시 더 이상 사용 안 함 → `POST /consultant/apply`로 대체 |
+
+---
+
+## API 명세 수정 사항
+
+### `api_spec.xlsx` (프론트엔드 → 백엔드)
+
+| 작업 | 내용 |
+|------|------|
+| **새 시트 추가** | `Consultant` 시트 — 아래 3개 엔드포인트 추가 |
+
+**Consultant 시트 내용**
+
+| 메서드 | 엔드포인트 | 인증필요 | 구현여부 | 설명 |
+|--------|-----------|---------|---------|------|
+| POST | `/api/v1/consultant/analyze` | O | O | 사용자 목표 분석, `{ userGoal }` → `{ action, reasoning }` |
+| POST | `/api/v1/consultant/propose` | O | O | 재설정 제안, `{ userGoal, action }` → `{ summary, explanation, salaryAllocations, portfolio }` |
+| POST | `/api/v1/consultant/apply` | O | O | 제안 적용, `{ action, salaryAllocations, portfolio }` → 204 |
+
+### `backend_to_ai_server_api_spec - consultant.csv` (백엔드 → AI 서버)
+
+| 항목 | 현재 | 수정 후 |
+|------|------|---------|
+| Base URL | `http://localhost:8000/portfolio` | `http://localhost:8000` |
+| `/consultant/propose` 요청 파라미터 경로 | `dashboard_snapshot.consumption.totalExpense` | `dashboard_snapshot.totalExpense` |
+| `/consultant/analyze` 요청 바디 구조 | `consumption: { totalExpense }` 중첩 | `totalExpense` 최상위 필드로 이동 |
