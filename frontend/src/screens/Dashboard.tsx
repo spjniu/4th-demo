@@ -548,7 +548,10 @@ export default function Dashboard() {
   const [poriAction, setPoriAction] = useState<'salary' | 'portfolio' | null>(null);
   const [poriProposal, setPoriProposal] = useState<Proposal | null>(null);
   const [poriError, setPoriError] = useState<string | null>(null);
+  const [highlightWidget, setHighlightWidget] = useState<'salary' | 'portfolio' | null>(null);
   const poriInputRef = useRef<HTMLTextAreaElement>(null);
+  const salaryWidgetRef = useRef<HTMLDivElement>(null);
+  const investWidgetRef = useRef<HTMLDivElement>(null);
 
   // 대시보드 fetch 결과로 목표 카드 채우기 (events[0] 우선)
   useEffect(() => {
@@ -709,11 +712,12 @@ export default function Dashboard() {
           </div>
 
           {/* [3] 월급 가이드 위젯 */}
-          <div style={{ gridColumn: '2' }}>
+          <div ref={salaryWidgetRef} style={{ gridColumn: '2' }}>
             <SalaryGuideWidget
               income={dashboard.salaryPlan.monthlyIncome}
               slices={salarySlices}
               onClick={() => setSalaryMgmtOpen(true)}
+              highlight={highlightWidget === 'salary'}
             />
           </div>
 
@@ -746,12 +750,13 @@ export default function Dashboard() {
           </div>
 
           {/* [5] 투자 위젯 */}
-          <div style={{ gridColumn: '1' }}>
+          <div ref={investWidgetRef} style={{ gridColumn: '1' }}>
             <InvestmentWidget
               investAmt={dashboard.assetsSummary.investmentBalance}
               portfolioItems={dashboard.portfolio.slice(0, 3)}
               active={portfolioDetailOpen}
               onClick={() => setPortfolioDetailOpen(v => !v)}
+              highlight={highlightWidget === 'portfolio'}
             />
           </div>
 
@@ -1197,32 +1202,29 @@ export default function Dashboard() {
                 <p style={{ fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.6 }}>{poriProposal.explanation}</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                  {poriProposal.changes.events.map((ev, i) => (
-                    <div key={i} style={{ background: '#E1F5EE', borderRadius: 10, padding: '10px 12px' }}>
-                      <p style={{ fontSize: 10, color: '#0F6E56', fontWeight: 600, margin: '0 0 3px' }}>🎯 목표 추가</p>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: '0 0 2px' }}>{ev.title}</p>
-                      <p style={{ fontSize: 11, color: '#475569', margin: 0 }}>
-                        목표금액 {parseInt(ev.targetAmount).toLocaleString()}원 · 마감 {ev.deadline}
-                      </p>
-                    </div>
-                  ))}
-                  {poriProposal.changes.salaryAllocations.map((al, i) => (
+                  {poriAction === 'salary' && poriProposal.changes.salaryAllocations.map((al, i) => (
                     <div key={i} style={{ background: '#EEF2FF', borderRadius: 10, padding: '10px 12px' }}>
                       <p style={{ fontSize: 10, color: '#4338CA', fontWeight: 600, margin: '0 0 3px' }}>💸 월 배분 변경</p>
                       <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>
-                        {al.purpose} &nbsp;+{al.plannedAmount.toLocaleString()}원/월
+                        {al.purpose} &nbsp;{al.plannedAmount.toLocaleString()}원/월
                       </p>
                     </div>
                   ))}
-                  {poriProposal.changes.portfolio.map((pt, i) => (
+                  {poriAction === 'portfolio' && poriProposal.changes.portfolio.map((pt, i) => (
                     <div key={i} style={{ background: '#FEF9EC', borderRadius: 10, padding: '10px 12px' }}>
                       <p style={{ fontSize: 10, color: '#854F0B', fontWeight: 600, margin: '0 0 3px' }}>📊 포트폴리오 조정</p>
                       <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>
-                        {pt.assetType} → {pt.assetAmount.toLocaleString()}원/월
+                        {pt.assetType} → {pt.assetAmount.toLocaleString()}원/월 ({pt.ratio}%)
                       </p>
                     </div>
                   ))}
                 </div>
+
+                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12, textAlign: 'center' }}>
+                  {poriAction === 'salary'
+                    ? '승인하면 월급 배분과 포트폴리오 비율이 함께 업데이트돼요'
+                    : '승인하면 포트폴리오 비율이 업데이트돼요'}
+                </p>
 
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -1237,6 +1239,15 @@ export default function Dashboard() {
                         setPoriStep('done');
                         const fresh = await getDashboard();
                         setDashboard(fresh);
+                        // 패널 닫고 변경된 위젯 하이라이트
+                        setPoriOpen(false);
+                        const target = poriAction ?? 'salary';
+                        setHighlightWidget(target);
+                        const ref = target === 'salary' ? salaryWidgetRef : investWidgetRef;
+                        setTimeout(() => {
+                          ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 100);
+                        setTimeout(() => setHighlightWidget(null), 3200);
                       } catch (e) {
                         setPoriError(e instanceof Error ? e.message : '적용 실패');
                         setPoriStep('preview');

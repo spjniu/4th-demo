@@ -11,29 +11,34 @@ function rateDisplay(r: string | undefined): { text: string; color: string } {
   return { text: r, color: '#94a3b8' };
 }
 
-export function InvestmentWidget({ investAmt, portfolioItems, active, onClick }: {
+export function InvestmentWidget({ investAmt, portfolioItems, active, onClick, highlight = false }: {
   investAmt: number;
   portfolioItems: DashboardPortfolioItem[];
   active: boolean;
   onClick: () => void;
+  highlight?: boolean;
 }) {
   return (
-    <div
-      onClick={onClick}
-      style={{
-        background: '#FFFFFF',
-        border: `1px solid ${active ? '#0095DB' : '#E0F2FE'}`,
-        borderRadius: 22,
-        padding: '16px',
-        boxShadow: '0 2px 12px rgba(0,149,219,0.06)',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        minHeight: 180,
-        boxSizing: 'border-box',
-      }}
-    >
+    <>
+      <style>{`@keyframes investPulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,149,219,0)} 50%{box-shadow:0 0 0 8px rgba(0,149,219,0.25)} }`}</style>
+      <div
+        onClick={onClick}
+        style={{
+          background: highlight ? '#F0F7FF' : '#FFFFFF',
+          border: highlight ? '2px solid #0095DB' : `1px solid ${active ? '#0095DB' : '#E0F2FE'}`,
+          borderRadius: 22,
+          padding: '16px',
+          boxShadow: highlight ? '0 0 0 0 rgba(0,149,219,0)' : '0 2px 12px rgba(0,149,219,0.06)',
+          animation: highlight ? 'investPulse 1s ease-in-out 3' : undefined,
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          minHeight: 180,
+          boxSizing: 'border-box',
+          transition: 'border 0.3s, background 0.3s',
+        }}
+      >
       {/* 상단 */}
       <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>투자</span>
 
@@ -67,6 +72,7 @@ export function InvestmentWidget({ investAmt, portfolioItems, active, onClick }:
         </p>
       </div>
     </div>
+    </>
   );
 }
 
