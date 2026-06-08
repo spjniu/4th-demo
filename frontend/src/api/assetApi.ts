@@ -113,3 +113,11 @@ export async function getAutoTransferStatus(): Promise<AutoTransferStatus> {
   if (!res.success) throw new Error(res.message || '자동이체 상태 조회 중 오류가 발생했습니다.');
   return res.data;
 }
+
+/**
+ * DELETE /assets/{assetId} — 자산(계좌) 연결 해제
+ */
+export async function deleteAsset(assetId: string): Promise<void> {
+  const res = await api.delete<CommonResponse>(`/assets/${assetId}`);
+  if (!res.success) throw new Error(res.message || '계좌 해제 중 오류가 발생했습니다.');
+}

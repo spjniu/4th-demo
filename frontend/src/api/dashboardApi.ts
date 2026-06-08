@@ -44,9 +44,11 @@ export interface DashboardCategoryExpense {
 
 export interface DashboardConsumption {
   referenceMonth: number;
-  totalExpense: number;
-  isBudgetExceeded: boolean;
-  budgetExceedRate: number;
+  totalExpense: number;        // 이번 달 소비총합
+  lastMonthExpense: number;    // 저번 달 소비총합 (예산 기준선)
+  isBudgetExceeded: boolean;   // 이번 달 > 저번 달
+  budgetExceedRate: number;    // 저번 달 대비 초과율 (%)
+  weeklyExpenses: number[];    // 이번 주 요일별 지출 [월,화,수,목,금]
   categories: DashboardCategoryExpense[];
 }
 
@@ -64,6 +66,20 @@ export interface DashboardPortfolioItem {
   items: DashboardPortfolioSubItem[];
 }
 
+export interface DashboardTaxSavingBar {
+  label: string;          // "IRP" / "연금저축"
+  contribution: number;   // 현재 납입액
+  deductible: number;     // 실제 공제 대상액 (합산 900만·연금 600만 한도 반영)
+  limit: number;          // 세액공제 한도 (연금 600만 / IRP 합산 900만)
+}
+
+export interface DashboardTaxSaving {
+  deductionRate: number;     // 적용 공제율(%) 16.5 / 13.2
+  totalTaxDeduction: number; // 연금저축 + IRP 합산 예상 세액공제액
+  remaining: number;         // 합산 한도까지 남은 납입 여력
+  bars: DashboardTaxSavingBar[];
+}
+
 export interface DashboardData {
   user: DashboardUser;
   assetsSummary: DashboardAssetsSummary;
@@ -71,6 +87,7 @@ export interface DashboardData {
   events: DashboardEvent[];
   consumption: DashboardConsumption;
   portfolio: DashboardPortfolioItem[];
+  taxSaving: DashboardTaxSaving;
 }
 
 /**

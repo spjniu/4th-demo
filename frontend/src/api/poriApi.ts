@@ -1,14 +1,6 @@
 import type { DashboardData } from './dashboardApi';
-
-const AI_BASE = 'http://localhost:8000';
-const API_BASE = 'http://localhost:8080/api/v1';
-
-function authHeaders(): Record<string, string> {
-  const token = localStorage.getItem('token');
-  const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  return h;
-}
+import { analyzeGoal, proposeReset } from './consultantApi';
+import { api } from './client';
 
 export interface ProposalEvent {
   title: string;
@@ -24,7 +16,8 @@ export interface ProposalAllocation {
 
 export interface ProposalPortfolioItem {
   assetType: string;
-  assetAmount: number;
+  assetAmount: number;  // 화면 표시용 (investAmount * ratio / 100)
+  ratio: number;        // 백엔드 apply 전달용
 }
 
 export interface ProposalChanges {
@@ -39,21 +32,47 @@ export interface Proposal {
   changes: ProposalChanges;
 }
 
-export async function fetchProposal(userMessage: string, dashboardSnapshot: DashboardData): Promise<Proposal> {
-  const res = await fetch(`${AI_BASE}/propose`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_message: userMessage, dashboard_snapshot: dashboardSnapshot }),
-  });
-  if (!res.ok) throw new Error(`AI 서버 오류 (${res.status})`);
-  return res.json();
+interface CommonResponse<T = null> {
+  success: boolean;
+  message: string;
+  data: T;
+}
+
+export async function fetchProposal(userMessage: string, dashboard: DashboardData): Promise<Proposal> {
+  const investAmount = dashboard.salaryPlan.investmentAmount ?? Math.round((dashboard.salaryPlan.monthlyIncome ?? 0) * 0.2);
+
+  const { action } = await analyzeGoal(userMessage);
+  const result = await proposeReset(userMessage, action);
+
+  const salaryAllocations: ProposalAllocation[] = result.salaryAllocations.map(a => ({
+    purpose: a.purpose,
+    plannedAmount: a.plannedAmount,
+  }));
+
+  const portfolio: ProposalPortfolioItem[] = result.portfolio.map(p => ({
+    assetType: p.assetType,
+    assetAmount: Math.round(investAmount * p.ratio / 100),
+    ratio: p.ratio,
+  }));
+
+  return {
+    summary: result.summary,
+    explanation: result.explanation,
+    changes: { events: [], salaryAllocations, portfolio },
+  };
 }
 
 export async function applyProposal(proposal: Proposal): Promise<void> {
-  const res = await fetch(`${API_BASE}/dashboard/apply`, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: JSON.stringify(proposal.changes),
+  const action = proposal.changes.portfolio.length > 0 ? 'portfolio' : 'salary';
+
+  const res = await api.post<CommonResponse>('/consultant/apply', {
+    action,
+    salaryAllocations: proposal.changes.salaryAllocations,
+    portfolio: proposal.changes.portfolio.map(p => ({
+      assetType: p.assetType,
+      ratio: p.ratio,
+    })),
   });
-  if (!res.ok) throw new Error(`적용 실패 (${res.status})`);
+
+  if (!res.success) throw new Error(res.message || '재설정 적용 실패');
 }

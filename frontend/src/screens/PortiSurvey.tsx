@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { ArrowRight, ArrowLeft, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import heroImg from '../assets/hero.png';
 import portiImg from '../assets/porti.png';
 import swimporiImg from '../assets/Swimpori.png';
@@ -11,6 +11,7 @@ import fencingporiImg from '../assets/FencingPori.png';
 import archeryporiImg from '../assets/Archerypori.png';
 import { useAuth } from '../contexts/AuthContext';
 import { generateAgentProfile, type AgentProfile } from '../api/agentApi';
+import { getGoal, updateGoal } from '../api/userApi';
 import warrenBuffettImg from '../assets/Warren Buffett.png';
 import kenFisherImg from '../assets/Ken Fisher.png';
 import johnBogleImg from '../assets/John Bogle.png';
@@ -266,8 +267,32 @@ type Step = 'intro' | 'question' | 'theme' | 'goal' | 'loading' | 'result';
 export default function PortiSurvey() {
   const { userName: USER_NAME } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [step, setStep] = useState<Step>('intro');
+  // 사이드바 "관심사 재설정" 진입: 테마·목표만 다시 고르고 PATCH /me/goal 로 저장
+  const editMode = location.state?.mode === 'editGoal';
+  // 사이드바 "AI 자산 초상화" 진입: 저장된 결과를 읽기 전용으로 다시 보기
+  const viewMode = location.state?.mode === 'viewProfile';
+
+  const [step, setStep] = useState<Step>(editMode ? 'theme' : 'intro');
+
+  useEffect(() => {
+    if (editMode) return;   // 편집 모드는 저장된 진단 복원/result 점프 생략
+    const saved = localStorage.getItem('agentProfile');
+    if (saved && !location.state?.forceIntro) {
+      try {
+        const profile = JSON.parse(saved);
+        const idx = PORTI_TYPE_TO_INDEX[profile.portiType];
+        if (idx !== undefined) {
+          setAgentProfile(profile);
+          setResult(RESULT_TYPES[idx]);
+          setStep('result');
+        }
+      } catch (e) {
+        console.error('[PortiSurvey] Failed to restore profile:', e);
+      }
+    }
+  }, [location.state]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, 'A' | 'B'>>({});
   const [completing, setCompleting] = useState(false);
@@ -281,6 +306,45 @@ export default function PortiSurvey() {
   const [agentProfile, setAgentProfile] = useState<AgentProfile | null>(null);
   const [priorities, setPriorities] = useState<(string | null)[]>([null, null, null]);
   const [selectedGoal, setSelectedGoal] = useState<string | null>(null);
+  const [savingGoal, setSavingGoal] = useState(false);
+
+  // 편집 모드: 기존 관심 테마·목표(라벨)를 불러와 id로 변환해 프리필
+  useEffect(() => {
+    if (!editMode) return;
+    getGoal()
+      .then(goal => {
+        const ids = (goal.stockThemes ?? [])
+          .map(label => THEME_CATEGORIES.find(c => c.label === label)?.id)
+          .filter((id): id is string => !!id)
+          .slice(0, 3);
+        const padded: (string | null)[] = [...ids];
+        while (padded.length < 3) padded.push(null);
+        setPriorities(padded);
+        setSelectedGoal(
+          goal.lifeGoal ? (GOAL_CATEGORIES.find(g => g.label === goal.lifeGoal)?.id ?? null) : null,
+        );
+      })
+      .catch(e => console.error('[PortiSurvey] 관심사 불러오기 실패:', e));
+  }, [editMode]);
+
+  // 편집 모드 저장: 선택한 테마·목표 id → 라벨로 변환해 PATCH /me/goal
+  const handleSaveGoal = async () => {
+    const stockThemes = priorities
+      .filter((id): id is string => id !== null)
+      .map(id => THEME_CATEGORIES.find(c => c.id === id)?.label ?? id);
+    const lifeGoal = selectedGoal
+      ? (GOAL_CATEGORIES.find(g => g.id === selectedGoal)?.label ?? selectedGoal)
+      : null;
+    try {
+      setSavingGoal(true);
+      await updateGoal({ stockThemes, lifeGoal });
+      navigate('/dashboard');
+    } catch (e) {
+      console.error('[PortiSurvey] 관심사 저장 실패:', e);
+      alert('관심사 저장 중 오류가 발생했습니다. 다시 시도해주세요.');
+      setSavingGoal(false);
+    }
+  };
 
   const toggleDetail = (key: string) =>
     setOpenDetail(prev => ({ ...prev, [key]: !prev[key] }));
@@ -595,12 +659,13 @@ export default function PortiSurvey() {
             })}
           </div>
 
-          {/* 분석 시작 버튼 */}
+          {/* 분석 시작 / (편집 모드) 저장 버튼 */}
           <button
-            onClick={() => setStep('loading')}
-            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-2xl text-lg transition active:scale-95 mt-auto"
+            onClick={() => (editMode ? handleSaveGoal() : setStep('loading'))}
+            disabled={savingGoal}
+            className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 rounded-2xl text-lg transition active:scale-95 mt-auto disabled:opacity-60"
           >
-            분석 시작 →
+            {editMode ? (savingGoal ? '저장 중...' : '저장하기') : '분석 시작 →'}
           </button>
         </div>
       </div>
@@ -633,7 +698,17 @@ export default function PortiSurvey() {
 
           {/* 헤더 */}
           <header className="flex items-center justify-between px-4 py-3 bg-white sticky top-0 z-10 border-b border-gray-100 shrink-0">
-            <div className="w-10" />
+            {viewMode ? (
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="w-10 h-10 flex items-center justify-center -ml-2 text-gray-600 active:scale-90 transition"
+                aria-label="대시보드로"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            ) : (
+              <div className="w-10" />
+            )}
             <h1 className="font-semibold text-base font-wooridaum">AI 자산 초상화</h1>
             <div className="w-10" />
           </header>
@@ -1014,10 +1089,10 @@ export default function PortiSurvey() {
           {/* 하단 고정 버튼 */}
           <div className="sticky bottom-0 bg-white border-t border-gray-200 px-5 pt-4 pb-6 z-20 shrink-0">
             <button
-              onClick={() => navigate('/prescription-intro')}
+              onClick={() => navigate(viewMode ? '/dashboard' : '/prescription-intro')}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition shadow-lg flex justify-center items-center gap-2 active:scale-95"
             >
-              맞춤형 월급 가이드 받기 <ArrowRight className="w-5 h-5" />
+              {viewMode ? '대시보드로' : '맞춤형 월급 가이드 받기'} <ArrowRight className="w-5 h-5" />
             </button>
           </div>
 
