@@ -17,6 +17,7 @@ from app.schemas.consultant import (
 )
 from app.services.agent.consultant_tools import CONSULTANT_TOOLS
 from app.services.agent.llm import ainvoke_structured, get_llm
+from app.services.agent.porti_types import porti_label
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,14 @@ _ANALYZE_SYSTEM = (
     '반드시 아래 JSON 형식으로만 응답하세요:\n{"action": "salary" 또는 "portfolio", "reasoning": "추천 이유"}\n\n'
     "reasoning 작성 규칙:\n"
     "- 월 소득, 저축률, 여유자금, 지출액 등 제공된 실제 수치를 반드시 언급하세요\n"
+    "- 사용자의 투자 성향(portiType)을 고려해 선택 이유를 설명하세요\n"
     "- 선택한 옵션이 왜 더 적합한지, 선택하지 않은 옵션이 왜 덜 적합한지 모두 설명하세요\n"
     "- 2~3문장으로 구체적으로 작성하세요\n\n"
     "기준:\n"
     "- salary: 저축률이 낮거나 지출 구조 조정이 우선일 때, 특정 목적 자금 마련이 시급할 때\n"
-    "- portfolio: 저축률이 충분하지만 투자 수익이 목표 달성에 필요할 때, 자산 배분 불균형이 명확할 때"
+    "- portfolio: 저축률이 충분하지만 투자 수익이 목표 달성에 필요할 때, 자산 배분 불균형이 명확할 때\n"
+    "- 안전형(SWIMMING·ARCHERY) 사용자에게는 salary를 우선 고려하세요\n"
+    "- 투자형(FENCING·CYCLING) 사용자에게는 portfolio를 우선 고려하세요"
 )
 
 _SALARY_SYSTEM = (
@@ -47,7 +51,10 @@ _SALARY_SYSTEM = (
     "- 모든 ratio 합계 = 100\n"
     "- plannedAmount = 월 소득 x (ratio / 100), 원 단위 반올림\n"
     "- 생활비·저축·투자·목표 적금 등 현실적 항목으로 구성 (3~5개)\n"
-    "- explanation에 조회한 상품명과 금리를 반드시 포함하세요"
+    "- explanation에 조회한 상품명과 금리를 반드시 포함하세요\n"
+    "- 안전형(SWIMMING·ARCHERY): 저축·예금 비중 높게, 투자 항목 최소화\n"
+    "- 중립형(JUDO·RHYTHMIC): 저축과 투자 균형 있게 구성\n"
+    "- 투자형(FENCING·CYCLING): 투자 항목 비중 높게, 저축은 긴급자금 수준으로"
 )
 
 _PORTFOLIO_SYSTEM = (
@@ -62,7 +69,10 @@ _PORTFOLIO_SYSTEM = (
     "- 모든 ratio 합계 = 100\n"
     "- 사용자 목표·투자 성향에 맞는 자산 유형 선택 (3~5개)\n"
     "- 자산 유형 예시: ETF, 적금, IRP, 현금성, 해외주식, 채권\n"
-    "- explanation에 조회한 종목명을 반드시 포함하세요"
+    "- explanation에 조회한 종목명을 반드시 포함하세요\n"
+    "- 안전형(SWIMMING·ARCHERY): 현금성·적금 비중 높게, ETF 최소화 또는 제외\n"
+    "- 중립형(JUDO·RHYTHMIC): ETF 40~50%, 나머지 적금·현금성으로 균형\n"
+    "- 투자형(FENCING·CYCLING): ETF·해외주식 비중 60% 이상, 현금성은 10% 이하"
 )
 
 
@@ -73,6 +83,8 @@ def _fmt_dashboard(snap: dict[str, Any]) -> str:
     total_expense = snap.get("totalExpense", 0)
     free_cash = income - total_expense if income > 0 else 0
     savings_rate = round(free_cash / income * 100, 1) if income > 0 else 0.0
+    porti_type = snap.get("portiType")
+    porti_comment = snap.get("portiComment", "")
 
     alloc_lines = "\n".join(
         f"  - {a.get('purpose','기타')}: {a.get('plannedAmount',0):,}원 ({a.get('ratio',0)}%)"
@@ -84,7 +96,13 @@ def _fmt_dashboard(snap: dict[str, Any]) -> str:
         for p in portfolio
     ) or "  (없음)"
 
+    porti_line = (
+        f"투자 성향: {porti_label(porti_type)} — {porti_comment}\n"
+        if porti_type else ""
+    )
+
     return (
+        f"{porti_line}"
         f"월 소득: {income:,}원\n"
         f"이번 달 총 지출: {total_expense:,}원\n"
         f"월 여유자금: {free_cash:,}원\n"

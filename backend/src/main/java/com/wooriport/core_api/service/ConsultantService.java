@@ -174,6 +174,8 @@ public class ConsultantService {
     // 대시보드 스냅샷 구성 (AI 서버 전달용)
     // ──────────────────────────────────────
     private Map<String, Object> buildSnapshot(UUID userId) {
+        Users user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다: " + userId));
         DashboardResponseDto dashboard = dashboardService.getDashboard(userId);
         DashboardResponseDto.SalaryPlan sp = dashboard.getSalaryPlan();
 
@@ -212,6 +214,8 @@ public class ConsultantService {
         snapshot.put("salaryPlan", salaryPlan);
         snapshot.put("portfolio", portfolioItems);
         snapshot.put("totalExpense", totalExpense);
+        snapshot.put("portiType", user.getPortiType() != null ? user.getPortiType().name() : null);
+        snapshot.put("portiComment", user.getPortiComment());
         return snapshot;
     }
 
