@@ -7,7 +7,15 @@ import SalaryManagement from './SalaryManagement';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '../api/notificationApi';
 import { getAssets, deleteAsset, type Asset } from '../api/assetApi';
 import { fetchAnalysis, fetchProposalWithAction, applyProposal, type Proposal, type AnalysisResult } from '../api/poriApi';
-import { getChallengeAlarmDetail, type ChallengeAlarmDetail } from '../api/challengeApi';
+import {
+  getChallengeAlarmDetail,
+  recommendChallenge,
+  adjustChallenge,
+  createChallenge,
+  getActiveChallenge,
+  type ChallengeAlarmDetail,
+  type ChallengeProposal,
+} from '../api/challengeApi';
 import ChallengeAlarmModal from '../components/ChallengeAlarmModal';
 import portiImg from '../assets/porti.png';
 import {
@@ -15,7 +23,6 @@ import {
   buildSpendingItems,
   buildPortfolioSlices,
   computeConsumption,
-  computeMission,
 } from '../components/dashboard/shared';
 import WeatherAssetWidget from '../components/dashboard/WeatherAssetWidget';
 import { ConsumptionWidget, ConsumptionDetail } from '../components/dashboard/ConsumptionWidget';
@@ -325,16 +332,18 @@ function AccountManagePanel({ onClose, onAddInstitution }: { onClose: () => void
 
 const CHALLENGE_TYPES = new Set(['CHALLENGE_NAG', 'CHALLENGE_COMPLETE', 'CHALLENGE_FAILED']);
 
-function NotificationPanel({ onClose, items, setItems, onChallengeClick, userName }: {
+function NotificationPanel({ onClose, items, setItems, onChallengeClick, onReportClick, onSalaryClick, userName }: {
   onClose: () => void;
   items: NotiItem[];
   setItems: Dispatch<SetStateAction<NotiItem[]>>;
   onChallengeClick: (id: string, type: string) => void;
+  onReportClick: () => void;
+  onSalaryClick: () => void;
   userName: string;
 }) {
   const markRead = (id: string) => {
     setItems(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    markNotificationRead(id).catch(() => { });
+    if (!id.startsWith('dev-')) markNotificationRead(id).catch(() => { });
   };
   const markAll = () => {
     setItems(prev => prev.map(n => ({ ...n, read: true })));
@@ -369,6 +378,8 @@ function NotificationPanel({ onClose, items, setItems, onChallengeClick, userNam
         {items.map(n => (
           <div key={n.id} onClick={() => {
             markRead(n.id);
+            if (n.type === 'REPORT_READY') { onReportClick(); return; }
+            if (n.type === 'SALARY_REBALANCING') { onClose(); onSalaryClick(); return; }
             if (CHALLENGE_TYPES.has(n.type)) onChallengeClick(n.id, n.type);
           }}
             style={{
@@ -496,6 +507,10 @@ export default function Dashboard() {
   });
   const [challengeAlarmOpen, setChallengeAlarmOpen] = useState(false);
   const [challengeAlarmDetail, setChallengeAlarmDetail] = useState<ChallengeAlarmDetail | null>(null);
+  const [challengeProposal, setChallengeProposal] = useState<ChallengeProposal | null>(null);
+  const [challengeLoading, setChallengeLoading] = useState(false);
+  const [challengeAdjusting, setChallengeAdjusting] = useState(false);
+  const [adjustHistory, setAdjustHistory] = useState<Array<ChallengeProposal & { feedback: string }>>([]);
 
   // ── SSE 구독 ─────────────────────────────────────────────
   useEffect(() => {
@@ -503,7 +518,7 @@ export default function Dashboard() {
     if (!token) return;
 
     const es = new EventSource(
-      `http://localhost:8080/api/v1/notifications/subscribe?token=${token}`
+      `${import.meta.env.VITE_API_BASE ?? 'http://localhost:8080'}/api/v1/notifications/subscribe?token=${token}`
     );
 
     es.addEventListener('notification', async (e: MessageEvent) => {
@@ -544,9 +559,9 @@ export default function Dashboard() {
   const [poriOpen, setPoriOpen] = useState(false);
   const [poriStep, setPoriStep] = useState<PoriStep>('input');
   const [poriMessage, setPoriMessage] = useState('');
+  const [poriProposal, setPoriProposal] = useState<Proposal | null>(null);
   const [poriAnalysis, setPoriAnalysis] = useState<AnalysisResult | null>(null);
   const [poriAction, setPoriAction] = useState<'salary' | 'portfolio' | null>(null);
-  const [poriProposal, setPoriProposal] = useState<Proposal | null>(null);
   const [poriError, setPoriError] = useState<string | null>(null);
   const [highlightWidget, setHighlightWidget] = useState<'salary' | 'portfolio' | null>(null);
   const poriInputRef = useRef<HTMLTextAreaElement>(null);
@@ -574,8 +589,51 @@ export default function Dashboard() {
   const spendingItems = dashboard ? buildSpendingItems(dashboard.consumption.categories) : [];
   const portfolioSlices = dashboard ? buildPortfolioSlices(dashboard.portfolio) : [];
   const consumptionView = dashboard ? computeConsumption(dashboard.consumption) : null;
-  const mission = dashboard ? computeMission(dashboard.consumption.categories) : null;
   const taxSaving = dashboard?.taxSaving ?? null;
+
+  // 챌린지 — 대시보드 로드 후 1회: 진행 중이면 현황 표시, 없으면 AI 추천
+  useEffect(() => {
+    if (!dashboard || challengeProposal || challengeLoading) return;
+    setChallengeLoading(true);
+    getActiveChallenge()
+      .then(active => {
+        if (active) {
+          // 이미 진행 중인 챌린지 → 추천 대신 현황(진행 바) 표시
+          setChallengeProposal({
+            title: active.title,
+            description: active.description,
+            category: active.category,
+            challengeSubType: active.challengeSubType,
+            challengeType: active.challengeType === 'AMOUNT' ? 'AMOUNT' : 'FREQUENCY',
+            target: active.target,
+            estimatedSaving: active.estimatedSaving,
+            ticker: active.ticker,
+          });
+          setChallengeProgress(active.progressPercent > 0 ? active.progressPercent : 1);
+          return;
+        }
+        // 활성 챌린지 없음 → AI 추천
+        return recommendChallenge().then(p => setChallengeProposal(p));
+      })
+      .finally(() => setChallengeLoading(false));
+  }, [dashboard]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAdjust = async (feedback: string) => {
+    if (!challengeProposal) return;
+    setChallengeAdjusting(true);
+    const history = [...adjustHistory, { ...challengeProposal, feedback }];
+    setAdjustHistory(history);
+    const next = await adjustChallenge(history);
+    setChallengeProposal(next);
+    setChallengeAdjusting(false);
+  };
+
+  const handleChallengeStart = async () => {
+    if (!challengeProposal) return;
+    try { await createChallenge(challengeProposal); } catch { /* ignore */ }
+    setChallengeProgress(1);
+    sessionStorage.setItem(`challenge:progress:${new Date().getMonth()}`, '1');
+  };
 
   const handleGoalSubmit = () => {
     const text = goalText.trim();
@@ -733,20 +791,16 @@ export default function Dashboard() {
 
           {/* [4] 미션 위젯 */}
           <div style={{ gridColumn: '1 / -1' }}>
-            {mission && (
-              <MissionWidget
-                mission={mission}
-                progress={challengeProgress}
-                onStart={() => {
-                  setChallengeProgress(1);
-                  sessionStorage.setItem(`challenge:progress:${new Date().getMonth()}`, '1');
-                }}
-                onPause={() => {
-                  setChallengeProgress(0);
-                  sessionStorage.setItem(`challenge:progress:${new Date().getMonth()}`, '0');
-                }}
-              />
-            )}
+            <MissionWidget
+              proposal={challengeProposal}
+              loading={challengeLoading}
+              adjusting={challengeAdjusting}
+              progress={challengeProgress}
+              onStart={handleChallengeStart}
+              onEasier={() => handleAdjust('더 쉽게 조정해주세요')}
+              onHarder={() => handleAdjust('더 어렵게 조정해주세요')}
+              onChangeTopic={() => handleAdjust('주제를 바꿔주세요')}
+            />
           </div>
 
           {/* [5] 투자 위젯 */}
@@ -763,7 +817,7 @@ export default function Dashboard() {
           {/* [6] 절세 위젯 */}
           <div style={{ gridColumn: '2' }}>
             <TaxSavingWidget
-              taxDeduction={taxSaving!.totalTaxDeduction}
+              taxDeduction={taxSaving?.totalTaxDeduction ?? 0}
               active={anomalyOpen}
               onClick={() => setAnomalyOpen(v => !v)}
             />
@@ -946,6 +1000,8 @@ export default function Dashboard() {
               items={notiItems}
               setItems={setNotiItems}
               userName={USER_NAME}
+              onReportClick={() => { setNotiOpen(false); navigate('/monthly-report'); }}
+              onSalaryClick={() => { setNotiOpen(false); navigate('/salary-management'); }}
               onChallengeClick={async (id, type) => {
                 const challengeTypeMap: Record<string, 'ACTIVE' | 'SUCCESS' | 'FAILED'> = {
                   CHALLENGE_NAG: 'ACTIVE',
@@ -997,7 +1053,7 @@ export default function Dashboard() {
           pointerEvents: 'none', zIndex: 400,
         }}>
           <button
-            onClick={() => { setPoriOpen(true); setPoriStep('input'); setPoriMessage(''); setPoriAnalysis(null); setPoriAction(null); setPoriProposal(null); setPoriError(null); }}
+            onClick={() => { setPoriOpen(true); setPoriStep('input'); setPoriMessage(''); setPoriProposal(null); setPoriError(null); setPoriAnalysis(null); setPoriAction(null); }}
             style={{
               position: 'absolute', bottom: 28, right: 20,
               pointerEvents: 'auto',
@@ -1104,15 +1160,11 @@ export default function Dashboard() {
             )}
 
             {/* ── step: loading ── */}
-            {(poriStep === 'loading' || poriStep === 'proposing') && (
+            {poriStep === 'loading' && (
               <div style={{ textAlign: 'center', padding: '32px 0' }}>
                 <div style={{ fontSize: 40, marginBottom: 16 }}>🐥</div>
-                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>
-                  {poriStep === 'loading' ? '목표를 분석 중이에요...' : '플랜을 만들고 있어요...'}
-                </p>
-                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>
-                  {poriStep === 'loading' ? '현재 재무 상태를 보고 방향을 정하고 있어요' : '실제 금리와 시세를 확인해 최적 제안을 생성 중이에요'}
-                </p>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>목표를 분석하고 있어요...</p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>월급 조정인지 포트폴리오 조정인지 파악 중이에요</p>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
                   {[0, 1, 2].map(i => (
                     <div key={i} style={{
@@ -1130,66 +1182,70 @@ export default function Dashboard() {
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 22 }}>🐥</span>
-                  <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>Pori의 추천</p>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: 0 }}>Pori의 분석</p>
                 </div>
-                <p style={{ fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.7 }}>
-                  {poriAnalysis.reasoning}
-                </p>
-
-                <p style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 8 }}>어떤 방식으로 재설정할까요?</p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-                  {(['salary', 'portfolio'] as const).map(opt => (
+                <p style={{ fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.6 }}>{poriAnalysis.reasoning}</p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  {(['salary', 'portfolio'] as const).map(act => (
                     <button
-                      key={opt}
-                      onClick={() => setPoriAction(opt)}
+                      key={act}
+                      onClick={() => setPoriAction(act)}
                       style={{
                         flex: 1, padding: '12px 0', borderRadius: 12, border: '2px solid',
-                        borderColor: poriAction === opt ? '#1D9E75' : '#e2e8f0',
-                        background: poriAction === opt ? '#E1F5EE' : '#fff',
+                        borderColor: poriAction === act ? (act === 'salary' ? '#1D9E75' : '#0095DB') : '#e2e8f0',
+                        background: poriAction === act ? (act === 'salary' ? '#F0FBF7' : '#F0F7FF') : '#fff',
                         fontSize: 13, fontWeight: 700,
-                        color: poriAction === opt ? '#085041' : '#64748b',
-                        cursor: 'pointer', transition: 'all 0.15s',
+                        color: poriAction === act ? (act === 'salary' ? '#1D9E75' : '#0095DB') : '#64748b',
+                        cursor: 'pointer', position: 'relative',
                       }}
                     >
-                      {opt === 'salary' ? '💸 월급 배분' : '📊 포트폴리오'}
-                      {poriAnalysis.action === opt && (
-                        <span style={{ display: 'block', fontSize: 10, fontWeight: 500, marginTop: 2, color: '#1D9E75' }}>Pori 추천</span>
+                      {act === 'salary' ? '💰 월급 배분' : '📊 포트폴리오'}
+                      {poriAnalysis.action === act && (
+                        <span style={{ position: 'absolute', top: -8, right: -4, fontSize: 9, fontWeight: 700, background: '#1D9E75', color: '#fff', borderRadius: 99, padding: '2px 6px' }}>Pori 추천</span>
                       )}
                     </button>
                   ))}
                 </div>
-
-                {poriError && <p style={{ fontSize: 11, color: '#A32D2D', marginBottom: 8 }}>{poriError}</p>}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    onClick={() => { setPoriStep('input'); setPoriAnalysis(null); setPoriAction(null); setPoriError(null); }}
-                    style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', fontSize: 14, fontWeight: 600, color: '#64748b', cursor: 'pointer' }}
-                  >다시 입력</button>
-                  <button
-                    disabled={!poriAction}
-                    onClick={async () => {
-                      if (!dashboard || !poriAction) return;
-                      setPoriStep('proposing');
-                      setPoriError(null);
-                      try {
-                        const proposal = await fetchProposalWithAction(poriMessage, poriAction, dashboard);
-                        setPoriProposal(proposal);
-                        setPoriStep('preview');
-                      } catch (e) {
-                        setPoriError(e instanceof Error ? e.message : 'AI 서버 오류');
-                        setPoriStep('analyze');
-                      }
-                    }}
-                    style={{
-                      flex: 2, padding: '12px 0', borderRadius: 12, border: 'none',
-                      background: poriAction ? 'linear-gradient(135deg, #1D9E75, #085041)' : '#e2e8f0',
-                      fontSize: 14, fontWeight: 700,
-                      color: poriAction ? '#fff' : '#94a3b8',
-                      cursor: poriAction ? 'pointer' : 'default',
-                    }}
-                  >이 방식으로 진행 →</button>
-                </div>
+                <button
+                  disabled={!poriAction}
+                  onClick={async () => {
+                    if (!dashboard || !poriAction) return;
+                    setPoriStep('proposing');
+                    setPoriError(null);
+                    try {
+                      const proposal = await fetchProposalWithAction(poriMessage, poriAction, dashboard);
+                      setPoriProposal(proposal);
+                      setPoriStep('preview');
+                    } catch (e) {
+                      setPoriError(e instanceof Error ? e.message : 'AI 서버 오류');
+                      setPoriStep('analyze');
+                    }
+                  }}
+                  style={{
+                    width: '100%', padding: '12px 0', borderRadius: 12, border: 'none',
+                    background: poriAction ? 'linear-gradient(135deg, #0095DB, #00BFFF)' : '#e2e8f0',
+                    color: poriAction ? '#fff' : '#94a3b8',
+                    fontSize: 14, fontWeight: 700, cursor: poriAction ? 'pointer' : 'default',
+                  }}
+                >이 방향으로 제안받기 →</button>
               </>
+            )}
+
+            {/* ── step: proposing ── */}
+            {poriStep === 'proposing' && (
+              <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                <div style={{ fontSize: 40, marginBottom: 16 }}>🐥</div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 6 }}>플랜을 만들고 있어요...</p>
+                <p style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>실시간 금리와 시세를 확인하며 최적 제안을 생성 중이에요</p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} style={{
+                      width: 8, height: 8, borderRadius: '50%', background: '#0095DB',
+                      animation: `bounce 1.2s ${i * 0.2}s infinite`,
+                    }} />
+                  ))}
+                </div>
+              </div>
             )}
 
             {/* ── step: preview ── */}
@@ -1202,29 +1258,32 @@ export default function Dashboard() {
                 <p style={{ fontSize: 12, color: '#475569', marginBottom: 16, lineHeight: 1.6 }}>{poriProposal.explanation}</p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                  {poriAction === 'salary' && poriProposal.changes.salaryAllocations.map((al, i) => (
-                    <div key={i} style={{ background: '#EEF2FF', borderRadius: 10, padding: '10px 12px' }}>
-                      <p style={{ fontSize: 10, color: '#4338CA', fontWeight: 600, margin: '0 0 3px' }}>💸 월 배분 변경</p>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>
-                        {al.purpose} &nbsp;{al.plannedAmount.toLocaleString()}원/월
+                  {poriProposal.changes.events.map((ev, i) => (
+                    <div key={i} style={{ background: '#E1F5EE', borderRadius: 10, padding: '10px 12px' }}>
+                      <p style={{ fontSize: 10, color: '#0F6E56', fontWeight: 600, margin: '0 0 3px' }}>🎯 목표 추가</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: '0 0 2px' }}>{ev.title}</p>
+                      <p style={{ fontSize: 11, color: '#475569', margin: 0 }}>
+                        목표금액 {parseInt(ev.targetAmount).toLocaleString()}원 · 마감 {ev.deadline}
                       </p>
                     </div>
                   ))}
-                  {poriAction === 'portfolio' && poriProposal.changes.portfolio.map((pt, i) => (
+                  {(!poriAction || poriAction === 'salary') && poriProposal.changes.salaryAllocations.map((al, i) => (
+                    <div key={i} style={{ background: '#EEF2FF', borderRadius: 10, padding: '10px 12px' }}>
+                      <p style={{ fontSize: 10, color: '#4338CA', fontWeight: 600, margin: '0 0 3px' }}>💸 월 배분 변경</p>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>
+                        {al.purpose} &nbsp;+{al.plannedAmount.toLocaleString()}원/월
+                      </p>
+                    </div>
+                  ))}
+                  {(!poriAction || poriAction === 'portfolio') && poriProposal.changes.portfolio.map((pt, i) => (
                     <div key={i} style={{ background: '#FEF9EC', borderRadius: 10, padding: '10px 12px' }}>
                       <p style={{ fontSize: 10, color: '#854F0B', fontWeight: 600, margin: '0 0 3px' }}>📊 포트폴리오 조정</p>
                       <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', margin: 0 }}>
-                        {pt.assetType} → {pt.assetAmount.toLocaleString()}원/월 ({pt.ratio}%)
+                        {pt.assetType} → {pt.assetAmount.toLocaleString()}원/월
                       </p>
                     </div>
                   ))}
                 </div>
-
-                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12, textAlign: 'center' }}>
-                  {poriAction === 'salary'
-                    ? '승인하면 월급 배분과 포트폴리오 비율이 함께 업데이트돼요'
-                    : '승인하면 포트폴리오 비율이 업데이트돼요'}
-                </p>
 
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -1239,14 +1298,11 @@ export default function Dashboard() {
                         setPoriStep('done');
                         const fresh = await getDashboard();
                         setDashboard(fresh);
-                        // 패널 닫고 변경된 위젯 하이라이트
                         setPoriOpen(false);
-                        const target = poriAction ?? 'salary';
-                        setHighlightWidget(target);
-                        const ref = target === 'salary' ? salaryWidgetRef : investWidgetRef;
-                        setTimeout(() => {
-                          ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }, 100);
+                        const widgetTarget = poriAction === 'salary' ? 'salary' : 'portfolio';
+                        setHighlightWidget(widgetTarget);
+                        const ref = poriAction === 'salary' ? salaryWidgetRef : investWidgetRef;
+                        setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
                         setTimeout(() => setHighlightWidget(null), 3200);
                       } catch (e) {
                         setPoriError(e instanceof Error ? e.message : '적용 실패');

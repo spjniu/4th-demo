@@ -100,34 +100,25 @@ public class PortfolioService {
 
         Long oldMonthlyInvestAmount = user.getMonthlyInvestAmount();
 
-        List<Portfolios> saved;
-        if (request.getPortfolios() != null && !request.getPortfolios().isEmpty()) {
-            portfolioRepository.deleteByUserId(userId);
-            saved = request.getPortfolios().stream()
-                    .map(item -> {
-                        com.wooriport.core_api.domain.Assets asset = assetRepository.findById(item.getAssetId())
-                                .orElseThrow(() -> new IllegalArgumentException("계좌를 찾을 수 없습니다: " + item.getAssetId()));
-                        if (item.getAccountPurpose() != null) {
-                            asset.updateAccountPurpose(item.getAccountPurpose());
-                        }
-                        return Portfolios.builder()
-                                .user(user)
-                                .assetAmount(item.getAssetAmount())
-                                .asset(asset)
-                                .build();
-                    })
-                    .collect(Collectors.toList());
-            portfolioRepository.saveAll(saved);
-        } else {
-            // portfolios 미전달 시: 기존 비율 유지하며 금액만 재계산
-            saved = portfolioRepository.findByUserId(userId);
-            if (oldMonthlyInvestAmount != null && oldMonthlyInvestAmount > 0 && !saved.isEmpty()) {
-                for (Portfolios p : saved) {
-                    long newAmount = p.getAssetAmount() * request.getMonthlyInvestAmount() / oldMonthlyInvestAmount;
-                    p.updateAmount(newAmount);
-                }
-            }
-        }
+        // 기존 포트폴리오 전체 삭제 후 재생성
+        portfolioRepository.deleteByUserId(userId);
+
+        List<Portfolios> saved = request.getPortfolios().stream()
+                .map(item -> {
+                    com.wooriport.core_api.domain.Assets asset = assetRepository.findById(item.getAssetId())
+                            .orElseThrow(() -> new IllegalArgumentException("계좌를 찾을 수 없습니다: " + item.getAssetId()));
+                    if (item.getAccountPurpose() != null) {
+                        asset.updateAccountPurpose(item.getAccountPurpose());
+                    }
+                    return Portfolios.builder()
+                            .user(user)
+                            .assetAmount(item.getAssetAmount())
+                            .asset(asset)
+                            .build();
+                })
+                .collect(Collectors.toList());
+
+        portfolioRepository.saveAll(saved);
 
         // portfolioFlow.amount를 현재 monthlyInvestAmount 대비 비율로 재계산
         if (oldMonthlyInvestAmount != null && oldMonthlyInvestAmount > 0) {

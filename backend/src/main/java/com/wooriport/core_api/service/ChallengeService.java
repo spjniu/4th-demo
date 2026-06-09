@@ -1,5 +1,6 @@
 package com.wooriport.core_api.service;
 
+import com.wooriport.core_api.base.dto.challenge.ChallengeActiveResponseDto;
 import com.wooriport.core_api.base.dto.challenge.ChallengeCreateRequestDto;
 import com.wooriport.core_api.base.exception.UserNotFoundException;
 import com.wooriport.core_api.domain.MiniChallenges;
@@ -62,6 +63,31 @@ public class ChallengeService {
         return challenge.getId();
     }
 
+    // GET /challenges/active — 진행 중(IN_PROGRESS) 챌린지 조회 (없으면 null)
+    @Transactional(readOnly = true)
+    public ChallengeActiveResponseDto getActiveChallenge(UUID userId) {
+        return miniChallengesRepository.findFirstByUserIdAndStatus(userId, MiniChallenges.ChallengeStatus.IN_PROGRESS)
+                .map(c -> {
+                    long target  = c.getTarget() != null ? c.getTarget() : 0L;
+                    long current = c.getCurrentValue() != null ? c.getCurrentValue() : 0L;
+                    int progress = target > 0 ? (int) Math.min(100, current * 100 / target) : 0;
+                    return ChallengeActiveResponseDto.builder()
+                            .challengeId(c.getId())
+                            .title(c.getTitle())
+                            .description(c.getDescription())
+                            .category(c.getCategory())
+                            .challengeSubType(c.getChallengeSubType() != null ? c.getChallengeSubType().name() : null)
+                            .challengeType(c.getChallengeType() != null ? c.getChallengeType().name() : null)
+                            .target(c.getTarget())
+                            .currentValue(current)
+                            .progressPercent(progress)
+                            .estimatedSaving(c.getEstimatedSaving())
+                            .ticker(c.getRewardStockTicker())
+                            .build();
+                })
+                .orElse(null);
+    }
+
     // 거래 발생 시 진행 업데이트 (TransactionConsumer에서 호출)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateProgress(UUID userId, String category, String senderName,
@@ -107,12 +133,12 @@ public class ChallengeService {
         miniChallengesRepository.findById(UUID.fromString(challengeId)).ifPresent(challenge -> {
             try {
                 String nagMessage = challengeAgentService.nag(userId, challenge, threshold).getNagMessage();
-                notificationService.saveAndSend(
-                        userId,
-                        Notifications.NotificationType.CHALLENGE_NAG,
-                        "챌린지 " + threshold + "% 소비!",
-                        nagMessage
-                );
+                Notifications.NotificationType nagType = switch (threshold) {
+                    case 50 -> Notifications.NotificationType.NAG_50;
+                    case 80 -> Notifications.NotificationType.NAG_80;
+                    default -> Notifications.NotificationType.NAG_90;
+                };
+                notificationService.saveAndSend(userId, nagType, "챌린지 " + threshold + "% 소비!", nagMessage);
             } catch (Exception e) {
                 log.warn("[Challenge] nag 알림 실패 — userId: {}, threshold: {}%, 사유: {}", userId, threshold, e.getMessage());
             }

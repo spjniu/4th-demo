@@ -85,6 +85,7 @@ export interface RebalancingPlan {
   assetNumber: string;
   amount: number;
   nickname: string;
+  comment: string | null;
 }
 
 export interface AgentRecommend {

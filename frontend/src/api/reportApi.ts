@@ -6,13 +6,13 @@ export interface AssetSnapshot {
   totalAmount: number;
 }
 
-export interface WeeklyExpenseSnapshot {
+export interface WeeklyExpense {
   week: number;
   currCumulative: number;
   prevCumulative: number;
 }
 
-export interface CategoryExpenseItem {
+export interface CategoryExpense {
   category: string;
   amount: number;
   prevAmount: number;
@@ -20,7 +20,31 @@ export interface CategoryExpenseItem {
   hoverComment: string;
 }
 
-export interface ReportDetail {
+export interface PortfolioBreakdownItem {
+  productName: string;
+  productType: string;
+  ticker: string;
+  monthlyChangeRate: number;
+}
+
+export interface TaxBenefitSummary {
+  irpContribution: number;
+  irpCumulativeDeduction: number;
+  pensionContribution: number;
+  pensionCumulativeDeduction: number;
+  totalTaxSavings: number;
+}
+
+export interface MiniChallenge {
+  title: string;
+  challengeSubType: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: string;
+  rewardStockTicker: string | null;
+}
+
+export interface MonthlyReportData {
   id: string;
   year: number;
   month: number;
@@ -31,24 +55,22 @@ export interface ReportDetail {
   eventComment: string;
   marketCondition: string;
   guideline: string;
-  performanceStatus: string;
-  performanceComment: string;
+  assetChangeRate: number;
   assetSnapshots: AssetSnapshot[];
-  weeklyExpenses: WeeklyExpenseSnapshot[];
-  categoryExpenses: CategoryExpenseItem[];
+  weeklyExpenses: WeeklyExpense[];
+  categoryExpenses: CategoryExpense[];
+  portfolioBreakdown: PortfolioBreakdownItem[];
+  taxBenefitSummary: TaxBenefitSummary;
+  miniChallenges: MiniChallenge[];
   createdAt: string;
 }
 
-/**
- * 특정 월의 AI 월간 리포트 상세 조회
- * GET /reports/{year}/{month}
- */
-export async function getReportDetail(year: number, month: number): Promise<ReportDetail> {
-  const response = await api.get<CommonResponse>('/reports/' + year + '/' + month);
-  if (!response.success) {
-    throw new Error(response.message || '리포트 조회 중 오류가 발생했습니다.');
+export async function getMonthlyReport(year: number, month: number): Promise<MonthlyReportData> {
+  const res = await api.get<CommonResponse>(`/reports/${year}/${month}`);
+  if (!res.success) {
+    throw new Error(res.message || '리포트 조회 중 오류가 발생했습니다.');
   }
-  return response.data as ReportDetail;
+  return res.data as MonthlyReportData;
 }
 
 export interface AccountBenefit {
@@ -79,10 +101,6 @@ export interface TaxBenefitResponse {
   pensionSummary: PensionSummary;
 }
 
-/**
- * 세제 혜택 조회 API
- * GET /tax-benefits
- */
 export async function getTaxBenefits(): Promise<TaxBenefitResponse> {
   const response = await api.get<CommonResponse>('/tax-benefits');
   if (!response.success) {
@@ -90,4 +108,3 @@ export async function getTaxBenefits(): Promise<TaxBenefitResponse> {
   }
   return response.data as TaxBenefitResponse;
 }
-
