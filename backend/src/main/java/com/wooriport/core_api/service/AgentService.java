@@ -504,6 +504,10 @@ public class AgentService {
         Users user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException());
 
+        if (user.getPortiType() == null) {
+            throw new PortfolioNotSetException();
+        }
+
         // 1. 보유 자산 — 카드 + 월급 리밸런싱에 이미 묶인 계좌 제외
         List<Assets> assets = assetRepository.findByUserIdAndDeletedAtIsNull(userId);
 
@@ -535,9 +539,10 @@ public class AgentService {
         flaskBody.put("user_id", userId.toString());
         flaskBody.put("invest_amount",
                 user.getMonthlyInvestAmount() != null ? user.getMonthlyInvestAmount() : 0L);
-        flaskBody.put("interest", user.getLifeGoal());              // 관심사 (결혼/차/집 등)
-        flaskBody.put("invest_interests", user.getStockThemes());   // 관심 주식 테마 (최대 3개)
-        flaskBody.put("porti_type", user.getPortiType() != null ? user.getPortiType().name() : null);
+        flaskBody.put("interest", user.getLifeGoal() != null ? user.getLifeGoal() : "");
+        flaskBody.put("invest_interests",
+                user.getStockThemes() != null ? user.getStockThemes() : List.of());
+        flaskBody.put("porti_type", user.getPortiType().name());
         flaskBody.put("porti_comment", user.getPortiComment());
         flaskBody.put("invest_assets", investAssets);
 
@@ -727,7 +732,7 @@ public class AgentService {
         flaskBody.put("deadline", event.getDeadline().toString());
         flaskBody.put("invest_amount",
                 user.getMonthlyInvestAmount() != null ? user.getMonthlyInvestAmount() : 0L);
-        flaskBody.put("porti_type", user.getPortiType() != null ? user.getPortiType().name() : null);
+        flaskBody.put("porti_type", user.getPortiType() != null ? user.getPortiType().name() : "JUDO");
         flaskBody.put("porti_comment", user.getPortiComment());
         flaskBody.put("invest_assets", investAssets);
         flaskBody.put("products", productsBody);

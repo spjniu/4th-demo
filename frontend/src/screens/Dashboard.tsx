@@ -332,18 +332,31 @@ function AccountManagePanel({ onClose, onAddInstitution }: { onClose: () => void
 
 const CHALLENGE_TYPES = new Set(['CHALLENGE_NAG', 'CHALLENGE_COMPLETE', 'CHALLENGE_FAILED']);
 
-function NotificationPanel({ onClose, items, setItems, onChallengeClick, onReportClick, onSalaryClick, userName }: {
+function NotiSkeleton() {
+  return (
+    <div style={{ background: '#fff', border: '0.5px solid #f1f5f9', borderRadius: 14, padding: 14, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#e2e8f0', flexShrink: 0, animation: 'notiPulse 1.4s ease-in-out infinite' }} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ height: 14, width: '40%', borderRadius: 6, background: '#e2e8f0', animation: 'notiPulse 1.4s ease-in-out infinite' }} />
+        <div style={{ height: 12, width: '85%', borderRadius: 6, background: '#e2e8f0', animation: 'notiPulse 1.4s ease-in-out infinite 0.1s' }} />
+        <div style={{ height: 12, width: '60%', borderRadius: 6, background: '#e2e8f0', animation: 'notiPulse 1.4s ease-in-out infinite 0.2s' }} />
+      </div>
+    </div>
+  );
+}
+
+function NotificationPanel({ onClose, items, setItems, onChallengeClick, onReportClick, onSalaryClick, loading }: {
   onClose: () => void;
   items: NotiItem[];
   setItems: Dispatch<SetStateAction<NotiItem[]>>;
   onChallengeClick: (id: string, type: string) => void;
   onReportClick: () => void;
   onSalaryClick: () => void;
-  userName: string;
+  loading?: boolean;
 }) {
   const markRead = (id: string) => {
     setItems(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    if (!id.startsWith('dev-')) markNotificationRead(id).catch(() => { });
+    markNotificationRead(id).catch(() => { });
   };
   const markAll = () => {
     setItems(prev => prev.map(n => ({ ...n, read: true })));
@@ -375,7 +388,10 @@ function NotificationPanel({ onClose, items, setItems, onChallengeClick, onRepor
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, padding: '8px 12px 20px', overflowY: 'auto' }}>
-        {items.map(n => (
+        <style>{`@keyframes notiPulse { 0%,100%{opacity:1} 50%{opacity:.45} }`}</style>
+        {loading ? (
+          [0, 1, 2].map(i => <NotiSkeleton key={i} />)
+        ) : items.map(n => (
           <div key={n.id} onClick={() => {
             markRead(n.id);
             if (n.type === 'REPORT_READY') { onReportClick(); return; }
@@ -471,9 +487,10 @@ export default function Dashboard() {
           const { icon, iconBg } = notiTypeToIcon(n.type);
           return { id: n.id, type: n.type, icon, iconBg, title: n.title, body: n.content, time: formatRelativeTime(n.sentAt), read: n.isRead };
         });
-        setNotiItems(prev => [...fetched, ...prev.filter(n => n.id.startsWith('dev-'))]);
+        setNotiItems(fetched);
       })
-      .catch(() => { });
+      .catch(() => { })
+      .finally(() => setNotiLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -482,16 +499,8 @@ export default function Dashboard() {
   const [recapOpen, setRecapOpen] = useState(false);
   const [portfolioDetailOpen, setPortfolioDetailOpen] = useState(false);
   const [notiOpen, setNotiOpen] = useState(false);
-  const DEV_NOTI_ITEMS: NotiItem[] = [
-    { id: 'dev-salary', type: 'SALARY_REBALANCING', icon: '💳', iconBg: '#E6F1FB', title: '월급', body: '급여가 들어왔어요 - PorTI의 월급 가이드를 확인하고 편하게 분배해봐요!', time: '방금 전', read: false },
-    { id: 'dev-nag-50', type: 'CHALLENGE_NAG', icon: '⚡', iconBg: '#FEF9C3', title: '이번주 소비 미션', body: '50% 도달했어요ㅜㅡㅜ', time: '1시간 전', read: false },
-    { id: 'dev-nag-80', type: 'CHALLENGE_NAG', icon: '⚡', iconBg: '#FEF9C3', title: '이번주 소비 미션', body: '80% 도달했어요..!', time: '2시간 전', read: false },
-    { id: 'dev-nag-90', type: 'CHALLENGE_NAG', icon: '⚡', iconBg: '#FEF9C3', title: '이번주 소비 미션', body: '90% 도달했어요!!!', time: '3시간 전', read: false },
-    { id: 'dev-complete', type: 'CHALLENGE_COMPLETE', icon: '🏆', iconBg: '#E1F5EE', title: '이번주 소비 미션', body: '뿌우~축하해요 성공했어요', time: '5시간 전', read: false },
-    { id: 'dev-failed', type: 'CHALLENGE_FAILED', icon: '😢', iconBg: '#FCEBEB', title: '이번주 소비 미션', body: '뿌우,,,아쉽게 실패했어요', time: '1일 전', read: false },
-    { id: 'dev-report', type: 'REPORT_READY', icon: '📋', iconBg: '#E1F5EE', title: '월간리포트', body: `${USER_NAME}님의 월간리포트가 도착했어요 - 2026년 5월의 소비·투자를 종합 분석했어요!`, time: '2일 전', read: false },
-  ];
-  const [notiItems, setNotiItems] = useState<NotiItem[]>(DEV_NOTI_ITEMS);
+  const [notiLoading, setNotiLoading] = useState(true);
+  const [notiItems, setNotiItems] = useState<NotiItem[]>([]);
   const [accountMgmtOpen, setAccountMgmtOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [salaryMgmtOpen, setSalaryMgmtOpen] = useState(false);
@@ -999,7 +1008,7 @@ export default function Dashboard() {
               onClose={() => setNotiOpen(false)}
               items={notiItems}
               setItems={setNotiItems}
-              userName={USER_NAME}
+              loading={notiLoading}
               onReportClick={() => { setNotiOpen(false); navigate('/monthly-report'); }}
               onSalaryClick={() => { setNotiOpen(false); navigate('/salary-management'); }}
               onChallengeClick={async (id, type) => {

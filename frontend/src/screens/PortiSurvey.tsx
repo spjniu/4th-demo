@@ -22,14 +22,6 @@ import sethKlarmanImg from '../assets/Seth Klarman.png';
 
 const TOTAL_QUESTIONS = 10;
 
-// 카테고리별 지출 도넛 차트 데이터
-const SPENDING_CATEGORIES = [
-  { color: '#ef4444', label: '식비 (배달 등)', pct: 42 },
-  { color: '#3b82f6', label: '문화/여가', pct: 15 },
-  { color: '#8b5cf6', label: '온라인 쇼핑', pct: 17 },
-  { color: '#10b981', label: '교통', pct: 8 },
-  { color: '#e5e7eb', label: '기타', pct: 18 },
-];
 
 // 도넛 segment SVG path 생성기
 function donutArcPath(startPct: number, endPct: number, outerR: number, innerR: number, cx: number, cy: number): string {
@@ -773,16 +765,9 @@ export default function PortiSurvey() {
                       '교육': { keyword: '자기계발러', desc: '교육에 꾸준히 투자해요', emoji: '📚' },
                       '구독': { keyword: '구독수집가', desc: '구독 서비스를 많이 이용해요', emoji: '🎵' },
                     };
-                    // agentProfile 있으면 실제 데이터, 없으면 SPENDING_CATEGORIES 폴백
-                    let topName: string;
-                    if (agentProfile?.categoryExpense?.length) {
-                      const top = [...agentProfile.categoryExpense].sort((a, b) => b.amount - a.amount)[0];
-                      topName = top.name;
-                    } else {
-                      const fallback = [...SPENDING_CATEGORIES].sort((a, b) => b.pct - a.pct)[0];
-                      // '식비 (배달 등)' → '식비', '온라인 쇼핑' → '쇼핑' 등 정규화
-                      topName = fallback.label.replace(/\s*\(.*?\)/, '').replace('온라인 ', '');
-                    }
+                    if (!agentProfile?.categoryExpense?.length) return null;
+                    const top = [...agentProfile.categoryExpense].sort((a, b) => b.amount - a.amount)[0];
+                    const topName = top.name;
                     const match = Object.entries(SPENDING_KEYWORD).find(([key]) => topName.includes(key));
                     if (!match) return null;
                     const { keyword, desc, emoji } = match[1];
@@ -799,10 +784,15 @@ export default function PortiSurvey() {
 
                 {(() => {
                   const CHART_COLORS = ['#ef4444', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#e5e7eb'];
-                  const cats = agentProfile?.categoryExpense ?? SPENDING_CATEGORIES.map((c, i) => ({ name: c.label, amount: 0, ratio: c.pct, _color: c.color, _idx: i }));
+                  const cats = agentProfile?.categoryExpense ?? [];
                   const monthlyAvg = agentProfile
                     ? `${(agentProfile.monthlyAvgExpense / 10000).toFixed(1)}만`
-                    : '98.5만';
+                    : '-';
+                  if (cats.length === 0) return (
+                    <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex items-center justify-center text-sm text-gray-400">
+                      소비 카테고리 데이터를 불러오지 못했어요.
+                    </div>
+                  );
                   return (
                     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                       <div className="flex justify-center my-4">
@@ -811,16 +801,14 @@ export default function PortiSurvey() {
                             {(() => {
                               let acc = 0;
                               return cats.map((c, i) => {
-                                const pct = 'ratio' in c ? c.ratio : (c as typeof SPENDING_CATEGORIES[0]).pct;
                                 const start = acc;
-                                const end = acc + pct;
+                                const end = acc + c.ratio;
                                 acc = end;
-                                const color = agentProfile ? CHART_COLORS[i % CHART_COLORS.length] : (SPENDING_CATEGORIES[i]?.color ?? CHART_COLORS[i]);
                                 return (
                                   <path
                                     key={i}
                                     d={donutArcPath(start, end, 50, 28, 50, 50)}
-                                    fill={color}
+                                    fill={CHART_COLORS[i % CHART_COLORS.length]}
                                     opacity={hoveredCat !== null && hoveredCat !== i ? 0.35 : 1}
                                     style={{ cursor: 'pointer', transition: 'opacity 0.15s' }}
                                     onMouseEnter={() => setHoveredCat(i)}
@@ -832,13 +820,11 @@ export default function PortiSurvey() {
                           </svg>
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <div className="w-20 h-20 bg-white rounded-full flex flex-col items-center justify-center shadow-inner px-1 text-center">
-                              {hoveredCat !== null ? (
+                              {hoveredCat !== null && cats[hoveredCat] ? (
                                 <>
-                                  <span className="text-[10px] text-gray-500 leading-tight truncate max-w-[68px]">
-                                    {'name' in cats[hoveredCat] ? cats[hoveredCat].name : (cats[hoveredCat] as typeof SPENDING_CATEGORIES[0]).label}
-                                  </span>
-                                  <span className="font-bold text-sm leading-tight mt-0.5" style={{ color: agentProfile ? CHART_COLORS[hoveredCat % CHART_COLORS.length] : SPENDING_CATEGORIES[hoveredCat]?.color }}>
-                                    {'ratio' in cats[hoveredCat] ? cats[hoveredCat].ratio : (cats[hoveredCat] as typeof SPENDING_CATEGORIES[0]).pct}%
+                                  <span className="text-[10px] text-gray-500 leading-tight truncate max-w-[68px]">{cats[hoveredCat].name}</span>
+                                  <span className="font-bold text-sm leading-tight mt-0.5" style={{ color: CHART_COLORS[hoveredCat % CHART_COLORS.length] }}>
+                                    {cats[hoveredCat].ratio}%
                                   </span>
                                 </>
                               ) : (
@@ -852,49 +838,38 @@ export default function PortiSurvey() {
                         </div>
                       </div>
                       <div className="mt-6 space-y-3">
-                        {cats.map((c, i) => {
-                          const label = 'name' in c ? c.name : (c as typeof SPENDING_CATEGORIES[0]).label;
-                          const pct = 'ratio' in c ? c.ratio : (c as typeof SPENDING_CATEGORIES[0]).pct;
-                          const rawAmt = agentProfile && 'amount' in c
-                            ? c.amount
-                            : Math.round((agentProfile?.monthlyAvgExpense ?? 985000) * pct / 100);
-                          const amount = rawAmt > 0 ? `${rawAmt.toLocaleString()}원` : '';
-                          const color = agentProfile ? CHART_COLORS[i % CHART_COLORS.length] : (SPENDING_CATEGORIES[i]?.color ?? '#e5e7eb');
-                          return (
-                            <div key={i} className="flex justify-between items-center text-sm">
-                              <span className="flex items-center gap-2 text-gray-700">
-                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                                {label} <span className="text-xs text-gray-400">{pct}%</span>
-                              </span>
-                              {amount && <span className="text-gray-600">{amount}</span>}
-                            </div>
-                          );
-                        })}
+                        {cats.map((c, i) => (
+                          <div key={i} className="flex justify-between items-center text-sm">
+                            <span className="flex items-center gap-2 text-gray-700">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                              {c.name} <span className="text-xs text-gray-400">{c.ratio}%</span>
+                            </span>
+                            {c.amount > 0 && <span className="text-gray-600">{c.amount.toLocaleString()}원</span>}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   );
                 })()}
 
-                <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold text-sm text-gray-700">매월 나가는 고정 지출</span>
-                    <span className="font-bold text-gray-800">
-                      월 {agentProfile ? agentProfile.totalFixedExpense.toLocaleString() : '245,000'}원
-                    </span>
+                {agentProfile?.fixedExpense?.length ? (
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="font-semibold text-sm text-gray-700">매월 나가는 고정 지출</span>
+                      <span className="font-bold text-gray-800">
+                        월 {agentProfile.totalFixedExpense.toLocaleString()}원
+                      </span>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      {agentProfile.fixedExpense.map(({ name, amount }) => (
+                        <div key={name} className="flex justify-between text-gray-600">
+                          <span>{name}</span>
+                          <span>{amount.toLocaleString()}원</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-2 text-xs">
-                    {(agentProfile?.fixedExpense ?? [
-                      { name: '보장성 보험료', amount: 150000 },
-                      { name: '통신비', amount: 65000 },
-                      { name: 'OTT 및 정기구독', amount: 30000 },
-                    ]).map(({ name, amount }) => (
-                      <div key={name} className="flex justify-between text-gray-600">
-                        <span>{name}</span>
-                        <span>{amount.toLocaleString()}원</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                ) : null}
 
                 <button
                   type="button"
@@ -917,9 +892,14 @@ export default function PortiSurvey() {
                 <p className="text-sm font-semibold text-gray-400">현황</p>
 
                 {(() => {
-                  const safe = agentProfile?.investTendency?.safeRatio ?? 31;
-                  const risk = agentProfile?.investTendency?.riskRatio ?? 29;
-                  const moderate = agentProfile?.investTendency?.moderateRatio ?? Math.max(0, 100 - safe - risk);
+                  if (!agentProfile?.investTendency) return (
+                    <div className="bg-white border border-gray-200 rounded-2xl p-4 flex items-center justify-center text-sm text-gray-400">
+                      투자 성향 데이터를 불러오지 못했어요.
+                    </div>
+                  );
+                  const safe = agentProfile.investTendency.safeRatio;
+                  const risk = agentProfile.investTendency.riskRatio;
+                  const moderate = agentProfile.investTendency.moderateRatio ?? Math.max(0, 100 - safe - risk);
 
                   // 백엔드 미제공 — 툴팁 설명용 고정 라벨
                   const safeAssets = '예적금, 채권';

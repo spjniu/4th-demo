@@ -53,21 +53,6 @@ const PRODUCT_TYPE_META: Record<string, { tag: string; term: string }> = {
 };
 
 
-const REASONS = [
-  '생활비 카테고리 지난달 32,000원 초과',
-  '비상금 최근 3개월 미인출',
-  '투자 비율 20% 유지 기준 충족',
-];
-
-const SPEND_REASONS = [
-  '생활비 카테고리 지난달 32,000원 초과',
-  '비상금 최근 3개월 미인출',
-];
-
-const INVEST_REASONS = [
-  '단기 목적 자산(생활 여유 자금)의 유동성 확보와 우대 금리 혜택을 위해 추천해요',
-  '중기 목표 자금 마련 및 안정적 가치 상승을 위한 자산 분산 투자처예요',
-];
 
 interface Plan {
   id: string;
@@ -108,14 +93,14 @@ export default function SalaryManagement({ onClose }: Props) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedAccId, setSelectedAccId] = useState<string | null>(null);
   const [newTag, setNewTag] = useState('');
-  const [agentReasons, setAgentReasons] = useState<string[]>(REASONS);
+  const [agentLoading, setAgentLoading] = useState(true);
+  const [agentReasons, setAgentReasons] = useState<string[]>([]);
   const [agentPlanComments, setAgentPlanComments] = useState<Record<string, string>>({});
 
 
 
   useEffect(() => {
     const now = new Date();
-    // agent 추천 (실패해도 하드코딩 fallback 유지)
     getAgentRecommend()
       .then(rec => {
         const reasons: string[] = [];
@@ -123,14 +108,15 @@ export default function SalaryManagement({ onClose }: Props) {
         rec.rebalancingPlans?.forEach(p => {
           if (p.comment) reasons.push(p.comment);
         });
-        if (reasons.length > 0) setAgentReasons(reasons);
+        setAgentReasons(reasons);
         const comments: Record<string, string> = {};
         rec.rebalancingPlans?.forEach(p => {
           if (p.assetId && p.comment) comments[p.assetId] = p.comment;
         });
         setAgentPlanComments(comments);
       })
-      .catch(() => { /* fallback: hardcoded REASONS already set */ });
+      .catch(() => { })
+      .finally(() => setAgentLoading(false));
 
     Promise.all([
       getTransferPlans(now.getFullYear(), now.getMonth() + 1),
@@ -286,12 +272,20 @@ export default function SalaryManagement({ onClose }: Props) {
               )}
             </div>
 
-            {/* Pori 분배 가이드 (agent API, 실패 시 fallback) */}
+            {/* Pori 분배 가이드 */}
             <div className="bg-[#fffbeb] border border-[#fef3c7] rounded-2xl px-4 py-3.5 space-y-1.5">
               <p className="text-xs font-bold text-blue-500 mb-0.5">Pori의 분배 가이드</p>
-              {agentReasons.map((r, i) => (
-                <p key={i} className="text-xs text-[#92400e] leading-relaxed">{r}</p>
-              ))}
+              {agentLoading ? (
+                [0, 1, 2].map(i => (
+                  <div key={i} className="h-3 rounded-md bg-amber-100 animate-pulse" style={{ width: `${70 + i * 10}%` }} />
+                ))
+              ) : agentReasons.length > 0 ? (
+                agentReasons.map((r, i) => (
+                  <p key={i} className="text-xs text-[#92400e] leading-relaxed">{r}</p>
+                ))
+              ) : (
+                <p className="text-xs text-[#92400e] leading-relaxed">분배 가이드를 불러오는 중 오류가 발생했어요.</p>
+              )}
             </div>
 
             {/* 세부 분배 계획 */}
@@ -592,7 +586,7 @@ export default function SalaryManagement({ onClose }: Props) {
                           {tooltip === plan.id && (
                             <div className="absolute right-0 bottom-8 w-60 bg-slate-800 text-white text-[11px] px-3 py-2.5 rounded-xl shadow-xl z-50 leading-relaxed pointer-events-none">
                               <div className="absolute -bottom-1 right-3.5 w-2 h-2 bg-slate-800 rotate-45" />
-                              💡 {agentPlanComments[plan.id] ?? (isInvest ? INVEST_REASONS : SPEND_REASONS)[idx] ?? 'AI 추천 조정 금액이에요'}
+                              💡 {agentPlanComments[plan.id] ?? 'AI 추천 조정 금액이에요'}
                             </div>
                           )}
                         </div>
