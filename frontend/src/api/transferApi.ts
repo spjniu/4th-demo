@@ -10,9 +10,11 @@ interface CommonResponse<T = null> {
 
 // GET /transfer-plans portfolioItems (지출 계획 항목)
 export interface PortfolioItem {
-  planId: string;
+  planId: string | null;
   assetId: string;
   institution: string | null;
+  accountName: string | null;
+  accountPurpose: string | null;
   assetType: string;
   plannedAmount: number;
   baselineAmount: number;   // 기준 금액 (Case1 표시용)
