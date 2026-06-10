@@ -137,8 +137,9 @@ DELETE FROM portfolios WHERE user_id = (SELECT id FROM users WHERE email = 'taeh
 
 ## 남은 작업
 
-- [ ] **AssetPrescription.tsx:129** `tag: plan.assetType` → `tag: plan.nickname || plan.assetType` 수정
+- [x] **AssetPrescription.tsx tag 버그** — 팀 버전으로 교체하면서 자동 해결됨
+- [x] **frontend 병합** — AssetPortfolio, AssetPrescription, 신규 컴포넌트 6개, samsung.png 완료
+- [x] **4th-demo 커밋 & 푸시** — feat/consultant-bff 브랜치에 반영됨
 - [ ] **신용카드 필터링** — `recommend()` 에서 CREDIT_CARD 계좌를 rebalancingPlans에서 제외 (백엔드)
-- [ ] **frontend 병합 마저 완료** (poriApi, reportApi, MissionWidget, Dashboard, MonthlyReport) — todo #6
-- [ ] **4th-demo 커밋 & 푸시** — todo #7
 - [ ] **팀원 확인 필요**: `recommend()` readOnly 설계가 의도적인지, 향후 transfer_plans 연결 계획 있는지
+- [ ] **`_plan_flows` 최소 3개 flow 보장** — AI가 1개만 반환할 때 fallback 트리거 (ai-server)
